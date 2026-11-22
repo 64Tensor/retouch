@@ -1,0 +1,345 @@
+{
+  "schemaVersion": 1,
+  "package": "@64tensor/retouch-ml",
+  "description": "The default models this package downloads at runtime. The weights are not part of this package or its MIT license. Notices and license texts are in THIRD_PARTY_NOTICES.md.",
+  "disclaimer": "A record of what was read at source on the date given, not legal advice. Training-data terms are separate from model licenses, and this record does not clear them.",
+  "models": [
+    {
+      "id": "modnet",
+      "model": "MODNet",
+      "feature": "Cutout",
+      "license": "Apache-2.0",
+      "licenseEvidence": "The author's README says the code, models and demos are released under Apache-2.0.",
+      "authorRepo": "https://github.com/ZHKKKe/MODNet",
+      "copyrightLines": [],
+      "pinRepo": "https://huggingface.co/Xenova/modnet",
+      "pinRevision": "fa2fa546052fba4c08921230a26cc69a333fca12",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_CUTOUT_MODEL_URL",
+          "url": "https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model.onnx",
+          "size": 25888640,
+          "sha256": "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "Flickr portraits, OpenImages, SPS",
+          "terms": "Not read.",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "real-esrgan-x4plus",
+      "model": "Real-ESRGAN x4plus",
+      "feature": "Upscale",
+      "license": "BSD-3-Clause",
+      "licenseEvidence": "The author's repo is BSD-3-Clause and publishes the weights as its own release assets. It makes no separate statement about the weights.",
+      "authorRepo": "https://github.com/xinntao/Real-ESRGAN",
+      "copyrightLines": ["Copyright (c) 2021, Xintao Wang"],
+      "pinRepo": "https://huggingface.co/fernandotonon/QtMeshEditor-realesrgan-onnx",
+      "pinRevision": "766bac4b35aaeefe85a065ece8ee2f827b1314d8",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_UPSCALE_MODEL_URL",
+          "url": "https://huggingface.co/fernandotonon/QtMeshEditor-realesrgan-onnx/resolve/766bac4b35aaeefe85a065ece8ee2f827b1314d8/RealESRGAN_x4plus.onnx",
+          "size": 67132609,
+          "sha256": "c999e5e3365a23cda6d627c407005076c160f420d6b122a0ef7c9d4210aee96a"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "DIV2K (part of DF2K)",
+          "terms": "The dataset's site says it is for academic research only, and that image copyright stays with the owners.",
+          "termsUrl": "https://data.vision.ee.ethz.ch/cvl/DIV2K/",
+          "termsRead": true
+        },
+        {
+          "name": "Flickr2K (part of DF2K), OST",
+          "terms": "Not read.",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [
+        "The weights license is inferred from the author's repo license, not stated by the author."
+      ],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "lama",
+      "model": "LaMa",
+      "feature": "Erase",
+      "license": "Apache-2.0",
+      "licenseEvidence": "The author's repo is Apache-2.0. It makes no separate statement about the weights. The pinned conversion is tagged apache-2.0 and has no license file.",
+      "authorRepo": "https://github.com/advimman/lama",
+      "copyrightLines": ["Copyright [2021] Samsung Research"],
+      "pinRepo": "https://huggingface.co/Carve/LaMa-ONNX",
+      "pinRevision": "c3c0c9e468934d62e79c329e35d82dd09ff8c444",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_INPAINT_MODEL_URL",
+          "url": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx",
+          "size": 208044816,
+          "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "Places2",
+          "terms": "The terms of use limit the images to non-commercial research and education, and bar distributing them.",
+          "termsUrl": "http://places2.csail.mit.edu/download-private.html",
+          "termsRead": true
+        }
+      ],
+      "openPoints": [
+        "The weights license is inferred from the author's repo license, not stated by the author.",
+        "The conversion's card describes a modified FourierUnit from a fork, and it is a third party's work, not 64Tensor's."
+      ],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "ultraface",
+      "model": "UltraFace RFB-320",
+      "feature": "Detect (faces)",
+      "license": "MIT",
+      "licenseEvidence": "This file comes from the author's own MIT-licensed repo, at the pinned commit.",
+      "authorRepo": "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB",
+      "copyrightLines": ["Copyright (c) 2019 linzai"],
+      "pinRepo": "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB",
+      "pinRevision": "dffdddda9794a50607cba8f318507a28c1c27cab",
+      "isAuthorRepo": true,
+      "files": [
+        {
+          "constant": "DEFAULT_FACE_MODEL_URL",
+          "url": "https://raw.githubusercontent.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/dffdddda9794a50607cba8f318507a28c1c27cab/models/onnx/version-RFB-320.onnx",
+          "size": 1270727,
+          "sha256": "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "WIDER FACE",
+          "terms": "The dataset's site lists a Creative Commons BY-NC-ND license.",
+          "termsUrl": "http://shuoyang1213.me/WIDERFACE/",
+          "termsRead": true
+        }
+      ],
+      "openPoints": [
+        "The dataset's non-commercial, no-derivatives terms are the strictest in this list, and this is a face model."
+      ],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "yolox-nano",
+      "model": "YOLOX-nano",
+      "feature": "Detect (objects), Track",
+      "license": "Apache-2.0",
+      "licenseEvidence": "The author's repo is Apache-2.0 and publishes the weights as its release assets. The pinned mirror is tagged apache-2.0 and has no license file.",
+      "authorRepo": "https://github.com/Megvii-BaseDetection/YOLOX",
+      "copyrightLines": ["Copyright (c) 2021-2022 Megvii Inc. All rights reserved."],
+      "pinRepo": "https://huggingface.co/hr16/yolox-onnx",
+      "pinRevision": "a124b32c3b7c5cebda1c7cd96178f0f9d2050125",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_OBJECT_MODEL_URL",
+          "url": "https://huggingface.co/hr16/yolox-onnx/resolve/a124b32c3b7c5cebda1c7cd96178f0f9d2050125/yolox_nano.onnx",
+          "size": 3659407,
+          "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "COCO",
+          "terms": "Not read.",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "slimsam-77",
+      "model": "SlimSAM-77",
+      "feature": "Select",
+      "license": "Apache-2.0",
+      "licenseEvidence": "The author's repo and Segment Anything, which it derives from, are both Apache-2.0. The pinned conversion is tagged apache-2.0 and has no license file.",
+      "authorRepo": "https://github.com/czg1225/SlimSAM",
+      "copyrightLines": [],
+      "pinRepo": "https://huggingface.co/Xenova/slimsam-77-uniform",
+      "pinRevision": "5850ab45f587c112167512ffef949107115e26a0",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_SAM_ENCODER_URL",
+          "url": "https://huggingface.co/Xenova/slimsam-77-uniform/resolve/5850ab45f587c112167512ffef949107115e26a0/onnx/vision_encoder.onnx",
+          "size": 23276014,
+          "sha256": "9f8433273a6750b587779baa0cf5508111001bf7e7acfcf585d370139fd366d0"
+        },
+        {
+          "constant": "DEFAULT_SAM_DECODER_URL",
+          "url": "https://huggingface.co/Xenova/slimsam-77-uniform/resolve/5850ab45f587c112167512ffef949107115e26a0/onnx/prompt_encoder_mask_decoder.onnx",
+          "size": 16557892,
+          "sha256": "f4514391764fbd56e08e119060d874ecd7d52994bfb1968af159e12d4943b5bb"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "SA-1B",
+          "terms": "Meta describes a research-only license on the dataset's page. The full text was not read.",
+          "termsUrl": "https://ai.meta.com/datasets/segment-anything/",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "depth-anything-v2-small",
+      "model": "Depth Anything V2 Small",
+      "feature": "Depth",
+      "license": "Apache-2.0",
+      "licenseEvidence": "The author's README says the Small model is under Apache-2.0. Base, Large and Giant are CC-BY-NC-4.0 and are not used here.",
+      "authorRepo": "https://github.com/DepthAnything/Depth-Anything-V2",
+      "copyrightLines": [],
+      "pinRepo": "https://huggingface.co/onnx-community/depth-anything-v2-small",
+      "pinRevision": "4472b7362082ad9968fee890ca0f1e5aca36b93d",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_DEPTH_MODEL_URL",
+          "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model_quantized.onnx",
+          "size": 27258801,
+          "sha256": "fcf51f1b230362b28690bb9d1809bf0431f29cad20534e3f589bd7285547f20d"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "Virtual KITTI 2",
+          "terms": "Listed as CC BY-NC-SA 3.0.",
+          "termsUrl": "https://europe.naverlabs.com/proxy-virtual-worlds-vkitti-2/",
+          "termsRead": true
+        },
+        {
+          "name": "ImageNet-21K, Places365, SA-1B and others named in the paper",
+          "terms": "Not read in full for this model.",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "scunet-real-psnr",
+      "model": "SCUNet real-PSNR",
+      "feature": "Denoise",
+      "license": "Apache-2.0 OR MIT",
+      "licenseEvidence": "The author's SCUNet repo is Apache-2.0, but its download script fetches weights from releases of the author's MIT-licensed KAIR repo. The pinned conversion is tagged apache-2.0, and its LICENSE.txt is MIT text.",
+      "authorRepo": "https://github.com/cszn/SCUNet",
+      "copyrightLines": [
+        "Copyright 2022 Kai Zhang (cskaizhang@gmail.com, https://cszn.github.io/). All rights reserved.",
+        "Copyright (c) 2020 Kai Zhang (cskaizhang@gmail.com)",
+        "Copyright (c) 2019 Kai Zhang"
+      ],
+      "pinRepo": "https://huggingface.co/Heliosoph/scunet-onnx",
+      "pinRevision": "6d11417ee2fbcc73783c502a238ac115097754fe",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_DENOISE_MODEL_URL",
+          "url": "https://huggingface.co/Heliosoph/scunet-onnx/resolve/6d11417ee2fbcc73783c502a238ac115097754fe/scunet_color_real_psnr.onnx",
+          "size": 3798678,
+          "sha256": "231be201ab413dbc999d7951caa9844846b93a12a40a41e037d6b5888ed4e88c"
+        },
+        {
+          "constant": "DEFAULT_DENOISE_DATA_URL",
+          "url": "https://huggingface.co/Heliosoph/scunet-onnx/resolve/6d11417ee2fbcc73783c502a238ac115097754fe/scunet_color_real_psnr.onnx.data",
+          "size": 73138176,
+          "sha256": "98825ea1210b641c71e5f052f582c70c49fd44b35387ebe2c034268c17df3feb"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "WED, DIV2K, Flickr2K (named in the paper; the exact real-PSNR set is unconfirmed)",
+          "terms": "DIV2K's site says it is for academic research only. The others were not read.",
+          "termsUrl": "https://data.vision.ee.ethz.ch/cvl/DIV2K/",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [
+        "The author hasn't said which of the two licenses covers these weights, so both notices are reproduced."
+      ],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "pp-ocrv4-det",
+      "model": "PP-OCRv4 detector",
+      "feature": "Read text",
+      "license": "Apache-2.0",
+      "licenseEvidence": "PaddleOCR is Apache-2.0. RapidOCR, which made this conversion, says copyright in the weights stays with the PaddleOCR rights holders and that conversions stay under Apache-2.0.",
+      "authorRepo": "https://github.com/PaddlePaddle/PaddleOCR",
+      "copyrightLines": ["Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved."],
+      "pinRepo": "https://huggingface.co/SWHL/RapidOCR",
+      "pinRevision": "1cfba2e90fc938db55889873735088de210cc173",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_TEXT_DETECTOR_URL",
+          "url": "https://huggingface.co/SWHL/RapidOCR/resolve/1cfba2e90fc938db55889873735088de210cc173/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx",
+          "size": 4745517,
+          "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "Not identified",
+          "terms": "Not read.",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [],
+      "checkedAt": "2026-11-07"
+    },
+    {
+      "id": "pp-ocrv5-latin",
+      "model": "PP-OCRv5 Latin recognizer",
+      "feature": "Read text",
+      "license": "Apache-2.0",
+      "licenseEvidence": "PaddleOCR is Apache-2.0, and PaddlePaddle's model card for the Latin recognizer says the same. The pinned conversion is tagged apache-2.0 and has no license file.",
+      "authorRepo": "https://github.com/PaddlePaddle/PaddleOCR",
+      "copyrightLines": ["Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved."],
+      "pinRepo": "https://huggingface.co/monkt/paddleocr-onnx",
+      "pinRevision": "7b02d0a30a07ba2b92ad1ff5a8941ae2c633de65",
+      "isAuthorRepo": false,
+      "files": [
+        {
+          "constant": "DEFAULT_TEXT_RECOGNIZER_URL",
+          "url": "https://huggingface.co/monkt/paddleocr-onnx/resolve/7b02d0a30a07ba2b92ad1ff5a8941ae2c633de65/languages/latin/rec.onnx",
+          "size": 7862832,
+          "sha256": "614ffc2d6d3902d360fad7f1b0dd455ee45e877069d14c4e51a99dc4ef144409"
+        },
+        {
+          "constant": "DEFAULT_TEXT_DICTIONARY_URL",
+          "url": "https://huggingface.co/monkt/paddleocr-onnx/resolve/7b02d0a30a07ba2b92ad1ff5a8941ae2c633de65/languages/latin/dict.txt",
+          "size": 1634,
+          "sha256": "3c0a8a79b612653c25f765271714f71281e4e955962c153e272b7b8c1d2b13ff"
+        }
+      ],
+      "trainingData": [
+        {
+          "name": "Not identified",
+          "terms": "Not read.",
+          "termsRead": false
+        }
+      ],
+      "openPoints": [],
+      "checkedAt": "2026-11-07"
+    }
+  ]
+}

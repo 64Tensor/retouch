@@ -1,0 +1,841 @@
+import { Canvas, FabricImage } from "fabric";
+import {
+  createDefaultCurves,
+  createDefaultHsl,
+  createDefaultStylize,
+  IMAGE_PREVIEW_MAX_DIM,
+  PREVIEW_MAX_DIM,
+} from "../../constants";
+import type {
+  Adjustments,
+  CropRect,
+  CropShape,
+  Curves,
+  EditMask,
+  FilterPreset,
+  HslMixer,
+  ImageEdits,
+  Orientation,
+  StylizeEffect,
+  WarpField,
+} from "../../types";
+import { createCanvas } from "../../utils/canvas";
+import { applyCropShapes } from "../../utils/crop-shape";
+import type { CurveLuts } from "../../utils/curves";
+import { applyCurvesToContext, buildCurveLuts, curvesAreIdentity } from "../../utils/curves";
+import { applyDetailToContext, detailIsNeutral } from "../../utils/detail";
+import { buildFabricFilters, drawVignette, isNeutral } from "../../utils/filters";
+import { stageFitScale } from "../../utils/framing";
+import type { PostPasses } from "../../utils/gpu-passes";
+import { GpuPasses, postPassesAreNeutral } from "../../utils/gpu-passes";
+import type { HueTable } from "../../utils/hsl";
+import { applyHslToContext, buildHueTable, hslIsNeutral } from "../../utils/hsl";
+import { applyLensToCanvas, hasLens } from "../../utils/lens";
+import { applyLiquifyToCanvas, liquifyIsNeutral } from "../../utils/liquify";
+import type { PreparedMask } from "../../utils/masks";
+import { applyMasksToContext, prepareMasks } from "../../utils/masks";
+import { applyKeystone, hasKeystone } from "../../utils/perspective";
+import { applyStylizeToContext, stylizeIsNeutral } from "../../utils/stylize";
+import { applySourceTransform, orientedDims, straightenFitScale } from "../../utils/transform";
+
+export interface ImageRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type RenderSource = HTMLImageElement | HTMLVideoElement;
+
+/** Zoomed in, a redraw draws this far ahead of the zoom it's for. */
+const ZOOM_AHEAD = 1.5;
+/** A drawn canvas stays until it's this much bigger than shown (or not sharp enough). */
+const ZOOM_KEEP = 2;
+
+type VideoWithRVFC = HTMLVideoElement & {
+  requestVideoFrameCallback?: (cb: () => void) => number;
+};
+
+export class CanvasRenderer {
+  private readonly fabricCanvas: Canvas;
+  private readonly fabricImage: FabricImage;
+  private readonly container: HTMLElement;
+  private readonly source: RenderSource;
+  private readonly video: HTMLVideoElement | null;
+  /**
+   * Every source renders through this capped intermediate canvas: it bounds
+   * per-frame filter cost, stays inside the WebGL texture limit, and bakes
+   * the orientation/flip transform in so crop-overlay math stays
+   * source-agnostic.
+   */
+  private frameCanvas: HTMLCanvasElement;
+  private frameCtx: CanvasRenderingContext2D;
+  /** Scratch canvases for the keystone/lens warps (allocated on first use). */
+  private warpSrc: HTMLCanvasElement | null = null;
+  private lensSrc: HTMLCanvasElement | null = null;
+  private readonly rawWidth: number;
+  private readonly rawHeight: number;
+  /** Content-aware-scaled replacement source (images only). */
+  private carvedSource: HTMLCanvasElement | null = null;
+  private readonly previewCap: number;
+  private readonly abort = new AbortController();
+  private adjustments: Adjustments;
+  private rotation = 0;
+  private keystoneV = 0;
+  private keystoneH = 0;
+  private lensDistortion = 0;
+  private lensDevignette = 0;
+  /** Liquify field; null while neutral. */
+  private liquify: WarpField | null = null;
+  private curves: Curves = createDefaultCurves();
+  /** Cached LUTs; null while the curves are identity. */
+  private curveLuts: CurveLuts | null = null;
+  private hsl: HslMixer = createDefaultHsl();
+  /** Cached hue table; null while the mixer is neutral. */
+  private hueTable: HueTable | null = null;
+  /** Masks with precomputed matrices; empty while all masks are neutral. */
+  private preparedMasks: PreparedMask[] = [];
+  private stylize: StylizeEffect = createDefaultStylize();
+  private orientation: Orientation;
+  private flipH: boolean;
+  private flipV: boolean;
+  private filter: FilterPreset;
+  private filterStrength: number;
+  private crop: CropRect;
+  /** Shapes cut from the cropped frame; they come and go with the crop. */
+  private cropShapes: CropShape[] = [];
+  /** The committed crop stays applied in every tool; compare lifts it briefly. */
+  private cropApplied = true;
+  private imageRect: ImageRect = { x: 0, y: 0, width: 0, height: 0 };
+  private looping = false;
+  /** Zoom on top of fit-to-stage (1 = fit); see setViewZoom(). */
+  private viewZoom = 1;
+  /** Source px → CSS px: the stage fit, and the scale the canvas is drawn at. */
+  private fitScale = 1;
+  private drawScale = 1;
+  /** The size and pixel ratio the fabric canvas was last given. */
+  private canvasSize = "";
+  /** CSS magnification the stage adds on top of the drawn canvas. */
+  private screenScale = 1;
+  /** Post passes on the GPU: undefined until first needed, null when unavailable. */
+  private gpu: GpuPasses | null | undefined = undefined;
+  private renderListener: (() => void) | null = null;
+  private paintListener: (() => void) | null = null;
+  /** Straighten's fill zoom from the last render (the "before" side matches it). */
+  private straightenFit = 1;
+  /** Before/after divider as a fraction of the width; null when not comparing. */
+  private split: number | null = null;
+  /** The "before" image, when it isn't the source (a committed image's original). */
+  private beforeSource: HTMLImageElement | null = null;
+  /** The frame without look edits or liquify: the left side of the divider. */
+  private beforeFrame: HTMLCanvasElement | null = null;
+  /**
+   * While comparing, the edited frame as last painted (every 2D pass done),
+   * so moving the divider only recomposites the two sides.
+   */
+  private editedFrame: HTMLCanvasElement | null = null;
+
+  constructor(container: HTMLElement, source: RenderSource, edits: ImageEdits) {
+    this.container = container;
+    this.source = source;
+    this.adjustments = { ...edits.adjustments };
+    this.rotation = edits.rotation;
+    this.keystoneV = edits.keystoneV;
+    this.keystoneH = edits.keystoneH;
+    this.lensDistortion = edits.lensDistortion;
+    this.lensDevignette = edits.lensDevignette;
+    this.liquify = liquifyIsNeutral(edits.liquify) ? null : structuredClone(edits.liquify);
+    this.setCurves(edits.curves);
+    this.setHsl(edits.hsl);
+    this.setMasks(edits.masks);
+    this.stylize = { ...edits.stylize };
+    this.orientation = edits.orientation;
+    this.flipH = edits.flipH;
+    this.flipV = edits.flipV;
+    this.filter = edits.filter;
+    this.filterStrength = edits.filterStrength;
+    this.crop = { ...edits.crop };
+    this.cropShapes = structuredClone(edits.cropShapes);
+
+    this.video = "videoWidth" in source ? source : null;
+    if (this.video) {
+      this.rawWidth = this.video.videoWidth;
+      this.rawHeight = this.video.videoHeight;
+      this.previewCap = PREVIEW_MAX_DIM;
+    } else {
+      const image = source as HTMLImageElement;
+      this.rawWidth = image.naturalWidth;
+      this.rawHeight = image.naturalHeight;
+      this.previewCap = IMAGE_PREVIEW_MAX_DIM;
+    }
+
+    const { canvas, ctx } = this.buildFrameCanvas();
+    this.frameCanvas = canvas;
+    this.frameCtx = ctx;
+    this.drawFrame();
+
+    const canvasEl = document.createElement("canvas");
+    this.container.appendChild(canvasEl);
+
+    this.fabricCanvas = new Canvas(canvasEl, {
+      selection: false,
+      renderOnAddRemove: false,
+      skipTargetFind: true,
+    });
+
+    this.fabricImage = new FabricImage(this.frameCanvas, {
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+      originX: "center",
+      originY: "center",
+      objectCaching: false,
+    });
+
+    this.fabricCanvas.add(this.fabricImage);
+
+    // Detail, masks, HSL, curves, stylize and vignette are passes over the
+    // composed frame, not fabric filters (curves need an arbitrary
+    // per-channel LUT, clarity a wide blur). The GPU runs them when it can;
+    // the CPU versions are the fallback, and what export uses.
+    this.fabricCanvas.on("after:render", ({ ctx: renderCtx }) => {
+      if (!renderCtx) return;
+      const el = this.fabricCanvas.getElement();
+      if (!this.runGpuPasses(renderCtx, el)) this.runCpuPasses(renderCtx, el);
+      if (this.adjustments.vignette > 0) {
+        drawVignette(renderCtx, el.width, el.height, this.adjustments.vignette);
+      }
+      // Listeners see the edited frame, before the compare split covers part of it.
+      this.paintListener?.();
+      if (this.split !== null) this.keepEditedFrame(el);
+      this.drawSplit(renderCtx, el.width, el.height);
+      this.cutShapes(renderCtx, el);
+    });
+
+    if (this.video) {
+      const signal = this.abort.signal;
+      this.video.addEventListener("play", () => this.startLoop(), { signal });
+      this.video.addEventListener(
+        "pause",
+        () => {
+          this.stopLoop();
+          this.renderFrame();
+        },
+        { signal },
+      );
+      this.video.addEventListener(
+        "ended",
+        () => {
+          this.stopLoop();
+          this.renderFrame();
+        },
+        { signal },
+      );
+      this.video.addEventListener(
+        "seeked",
+        () => {
+          if (this.video?.paused) this.renderFrame();
+        },
+        { signal },
+      );
+    }
+  }
+
+  setAdjustments(adj: Adjustments): void {
+    this.adjustments = { ...adj };
+  }
+
+  setRotation(deg: number): void {
+    this.rotation = deg;
+  }
+
+  /**
+   * Swap in a content-aware-scaled source (or null to restore the original).
+   * All downstream geometry re-derives from the new dimensions.
+   */
+  setCarvedSource(canvas: HTMLCanvasElement | null): void {
+    this.carvedSource = canvas;
+    this.updateFrameGeometry();
+  }
+
+  private srcWidth(): number {
+    return this.carvedSource?.width ?? this.rawWidth;
+  }
+
+  private srcHeight(): number {
+    return this.carvedSource?.height ?? this.rawHeight;
+  }
+
+  /** Update the stylize effect. */
+  setStylize(stylize: StylizeEffect): void {
+    this.stylize = { ...stylize };
+  }
+
+  /** Update lens correction; the frame is redrawn through the remap. */
+  setLens(distortion: number, devignette: number): void {
+    if (distortion === this.lensDistortion && devignette === this.lensDevignette) return;
+    this.lensDistortion = distortion;
+    this.lensDevignette = devignette;
+    this.drawFrame();
+  }
+
+  /** Update the liquify field; the frame is redrawn through the remap. */
+  setLiquify(field: WarpField | null): void {
+    this.liquify = liquifyIsNeutral(field) ? null : structuredClone(field);
+    this.drawFrame();
+  }
+
+  /** Update the selective masks (matrices are precomputed once per change). */
+  setMasks(masks: EditMask[]): void {
+    this.preparedMasks = prepareMasks(structuredClone(masks));
+  }
+
+  /** Update the HSL mixer (the hue table is rebuilt once per change). */
+  setHsl(hsl: HslMixer): void {
+    this.hsl = structuredClone(hsl);
+    this.hueTable = hslIsNeutral(hsl) ? null : buildHueTable(hsl);
+  }
+
+  /** Update the tone curves (LUTs are rebuilt once per change, not per frame). */
+  setCurves(curves: Curves): void {
+    this.curves = structuredClone(curves);
+    this.curveLuts = curvesAreIdentity(curves) ? null : buildCurveLuts(curves);
+  }
+
+  /**
+   * Luminance histogram of the current (cropped/warped, pre-color) frame —
+   * the input the tone curves operate on.
+   */
+  computeHistogram(): Uint32Array {
+    const bins = new Uint32Array(256);
+    const w = this.frameCanvas.width;
+    const h = this.frameCanvas.height;
+    if (w === 0 || h === 0) return bins;
+    const data = this.frameCtx.getImageData(0, 0, w, h).data;
+    // Sample at a stride that caps the work near ~250k pixels.
+    const step = Math.max(1, Math.floor((w * h) / 250_000)) * 4;
+    for (let i = 0; i < data.length; i += step) {
+      const lum = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      bins[Math.min(255, Math.round(lum))]++;
+    }
+    return bins;
+  }
+
+  /** Update keystone correction; the frame is redrawn through the warp. */
+  setKeystone(vertical: number, horizontal: number): void {
+    if (vertical === this.keystoneV && horizontal === this.keystoneH) return;
+    this.keystoneV = vertical;
+    this.keystoneH = horizontal;
+    this.drawFrame();
+  }
+
+  setFilter(preset: FilterPreset): void {
+    this.filter = preset;
+  }
+
+  setFilterStrength(strength: number): void {
+    this.filterStrength = strength;
+  }
+
+  /** Update orientation/mirroring; the frame canvas is rebuilt to the new dims. */
+  setTransform(orientation: Orientation, flipH: boolean, flipV: boolean): void {
+    this.orientation = orientation;
+    this.flipH = flipH;
+    this.flipV = flipV;
+    this.updateFrameGeometry();
+  }
+
+  /** Track the crop rect (only affects pixels while the crop is applied). */
+  setCrop(crop: CropRect): void {
+    this.crop = { ...crop };
+    if (this.cropApplied) this.updateFrameGeometry();
+  }
+
+  /** Track the shapes cut from the cropped frame; the next render draws them. */
+  setCropShapes(shapes: readonly CropShape[]): void {
+    this.cropShapes = structuredClone([...shapes]);
+  }
+
+  /**
+   * Show the cropped region only (Lightroom-style: every tool but Crop sees
+   * the cropped image; the Crop tool sees the full frame plus the marquee).
+   */
+  setCropApplied(applied: boolean): void {
+    if (applied === this.cropApplied) return;
+    this.cropApplied = applied;
+    this.updateFrameGeometry();
+  }
+
+  getImageRect(): ImageRect {
+    return { ...this.imageRect };
+  }
+
+  /**
+   * Zoom relative to fitting the stage (1 = fit). The next render() applies
+   * it; false when that render would draw the canvas at the size it has.
+   */
+  setViewZoom(zoom: number): boolean {
+    this.viewZoom = Math.max(1, zoom);
+    const { width: sourceW, height: sourceH } = this.visibleSize();
+    if (sourceW === 0 || sourceH === 0) return false;
+    return this.drawScaleFor(this.stageFit(sourceW, sourceH), sourceW) !== this.drawScale;
+  }
+
+  /** From the last render: the stage-fit scale and the scale the canvas is actually drawn at. */
+  getViewScales(): { fit: number; draw: number } {
+    return { fit: this.fitScale, draw: this.drawScale };
+  }
+
+  /** The stage's CSS magnification on top of the canvas, so overlays can map pointer moves. */
+  setScreenScale(scale: number): void {
+    this.screenScale = scale;
+  }
+
+  getScreenScale(): number {
+    return this.screenScale;
+  }
+
+  getCanvasElement(): HTMLCanvasElement {
+    return this.fabricCanvas.getElement();
+  }
+
+  /** The size in pixels of the photo as shown: turned, and cropped if the crop is applied. */
+  getVisiblePixels(): { width: number; height: number } {
+    const { width, height } = this.visibleSize();
+    return { width: Math.round(width), height: Math.round(height) };
+  }
+
+  /**
+   * The scale render() draws at. At fit, the fit. Zoomed in, enough for the
+   * zoom, but no more device pixels than the frame has: past that there's no
+   * more detail to show, so the stage magnifies with CSS instead (which also
+   * keeps the per-pixel passes, and canvases, a bounded size). A canvas that
+   * is still sharp enough, and not much bigger than shown, stays; a new one
+   * is drawn ahead of the zoom, so zooming on doesn't redraw at every pause.
+   */
+  private drawScaleFor(stageFit: number, sourceW: number): number {
+    if (this.viewZoom === 1) return stageFit;
+    const detail = this.frameCanvas.width / sourceW / this.fabricCanvas.getRetinaScaling();
+    const cap = Math.max(stageFit, detail);
+    const needed = Math.min(cap, stageFit * this.viewZoom);
+    if (this.drawScale >= needed && this.drawScale <= Math.min(cap, needed * ZOOM_KEEP)) {
+      return this.drawScale;
+    }
+    return Math.min(cap, needed * ZOOM_AHEAD);
+  }
+
+  /** Fit the oriented source within the available area, with a small margin. */
+  private stageFit(sourceW: number, sourceH: number): number {
+    // Measure the available area from the parent, not `this.container`: the
+    // container is sized by its content (the canvas), so measuring it here would
+    // feed each render's canvas size back into the next render's fit scale,
+    // shrinking the image by the 0.9 margin on every edit.
+    const area = this.container.parentElement;
+    const availWidth = (area?.clientWidth ?? this.container.clientWidth) || 800;
+    const availHeight = (area?.clientHeight ?? this.container.clientHeight) || 600;
+    return stageFitScale(
+      { width: availWidth, height: availHeight },
+      { width: sourceW, height: sourceH },
+      this.cropActive(),
+    );
+  }
+
+  render(): void {
+    const { width: sourceW, height: sourceH } = this.visibleSize();
+    if (sourceW === 0 || sourceH === 0) return;
+
+    const stageFit = this.stageFit(sourceW, sourceH);
+    const scale = this.drawScaleFor(stageFit, sourceW);
+    this.fitScale = stageFit;
+    this.drawScale = scale;
+
+    const drawW = Math.round(sourceW * scale);
+    const drawH = Math.round(sourceH * scale);
+
+    // Size the fabric canvas to the drawn image dimensions. Only on a change:
+    // resizing blanks the canvas, so a resized one is drawn at once (below)
+    // rather than on the next frame, which would put it on screen blank.
+    const canvasSize = `${drawW}x${drawH}@${this.fabricCanvas.getRetinaScaling()}`;
+    const resized = canvasSize !== this.canvasSize;
+    if (resized) {
+      this.canvasSize = canvasSize;
+      this.fabricCanvas.setDimensions({ width: drawW, height: drawH });
+    }
+
+    // Straighten fills the frame: zoom by the inverse of the largest
+    // inscribed same-aspect rect so rotation never exposes the background.
+    const fit = straightenFitScale(sourceW, sourceH, this.rotation);
+    this.straightenFit = fit;
+    this.fabricImage.set({
+      left: drawW / 2,
+      top: drawH / 2,
+      scaleX: drawW / this.frameCanvas.width / fit,
+      scaleY: drawH / this.frameCanvas.height / fit,
+      angle: this.rotation,
+    });
+
+    this.applyFilters();
+
+    this.imageRect = { x: 0, y: 0, width: drawW, height: drawH };
+
+    if (resized) this.fabricCanvas.renderAll();
+    else this.fabricCanvas.requestRenderAll();
+    this.renderListener?.();
+  }
+
+  /** Called after every render() — the stage re-applies its zoom transform. */
+  onRender(listener: (() => void) | null): void {
+    this.renderListener = listener;
+  }
+
+  /** Called once fabric has actually painted the canvas (renders paint on the next frame). */
+  onPaint(listener: (() => void) | null): void {
+    this.paintListener = listener;
+  }
+
+  /**
+   * Compare before/after: left of `fraction` (0–1 of the width) shows the
+   * photo with its framing (crop, turns, straighten, perspective, lens) but
+   * none of the look edits or liquify. null turns it off.
+   */
+  setSplit(fraction: number | null): void {
+    const starting = fraction !== null && this.split === null;
+    this.split = fraction === null ? null : Math.min(1, Math.max(0, fraction));
+    if (starting) this.drawBeforeFrame();
+    if (this.split === null) {
+      this.beforeFrame = null;
+      this.editedFrame = null;
+    }
+    // Moving the divider changes no edits: redraw the two sides from the
+    // kept frames instead of running every pass over the whole photo again.
+    if (!starting && this.split !== null && this.repaintSplit()) return;
+    this.fabricCanvas.requestRenderAll();
+  }
+
+  /** Copy the canvas as just painted, edits and all, for divider moves to reuse. */
+  private keepEditedFrame(el: HTMLCanvasElement): void {
+    if (!this.editedFrame) this.editedFrame = createCanvas(1, 1);
+    const kept = this.editedFrame;
+    if (kept.width !== el.width || kept.height !== el.height) {
+      kept.width = el.width;
+      kept.height = el.height;
+    }
+    const ctx = kept.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, kept.width, kept.height);
+    ctx.drawImage(el, 0, 0);
+  }
+
+  /** Repaint the canvas from the kept frames for a new divider position; false if it can't. */
+  private repaintSplit(): boolean {
+    const kept = this.editedFrame;
+    const el = this.fabricCanvas.getElement();
+    if (!kept || kept.width !== el.width || kept.height !== el.height) return false;
+    const ctx = el.getContext("2d");
+    if (!ctx) return false;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, el.width, el.height);
+    ctx.drawImage(kept, 0, 0);
+    ctx.restore();
+    this.drawSplit(ctx, el.width, el.height);
+    this.cutShapes(ctx, el);
+    return true;
+  }
+
+  /** Cut the crop's shapes from the painted frame, both sides of the divider alike. */
+  private cutShapes(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement): void {
+    if (!this.cropApplied || this.cropShapes.length === 0) return;
+    applyCropShapes(ctx, el.width, el.height, this.cropShapes);
+  }
+
+  /** Draw the "before" side from this image instead of the source (same aspect ratio). */
+  setBeforeSource(image: HTMLImageElement | null): void {
+    if (image === this.beforeSource) return;
+    this.beforeSource = image;
+    if (this.split !== null) {
+      this.drawBeforeFrame();
+      this.fabricCanvas.requestRenderAll();
+    }
+  }
+
+  /** Redraw the current frame (and re-filter it when filters are active). */
+  renderFrame(): void {
+    this.drawFrame();
+    if (!isNeutral(this.adjustments, this.filter, this.filterStrength)) {
+      this.fabricImage.applyFilters();
+    }
+    this.fabricCanvas.requestRenderAll();
+  }
+
+  /** Convert screen coordinates (relative to canvas) to normalized image coords (0–1). */
+  screenToImage(sx: number, sy: number): { x: number; y: number } {
+    const r = this.imageRect;
+    return {
+      x: r.width > 0 ? (sx - r.x) / r.width : 0,
+      y: r.height > 0 ? (sy - r.y) / r.height : 0,
+    };
+  }
+
+  /** Convert normalized image coords (0–1) to screen coordinates relative to canvas. */
+  imageToScreen(ix: number, iy: number): { x: number; y: number } {
+    const r = this.imageRect;
+    return {
+      x: r.x + ix * r.width,
+      y: r.y + iy * r.height,
+    };
+  }
+
+  destroy(): void {
+    this.stopLoop();
+    this.abort.abort();
+    this.gpu?.dispose();
+    this.fabricCanvas.dispose();
+  }
+
+  /** Oriented source dimensions (raw, uncapped). */
+  private orientedSize(): { width: number; height: number } {
+    return orientedDims(this.srcWidth(), this.srcHeight(), this.orientation);
+  }
+
+  private cropActive(): boolean {
+    const c = this.crop;
+    return this.cropApplied && (c.x > 0 || c.y > 0 || c.width < 1 || c.height < 1);
+  }
+
+  /** Oriented dims of what the preview shows (crop region when applied). */
+  private visibleSize(): { width: number; height: number } {
+    const { width, height } = this.orientedSize();
+    if (!this.cropActive()) return { width, height };
+    return {
+      width: Math.max(1, width * this.crop.width),
+      height: Math.max(1, height * this.crop.height),
+    };
+  }
+
+  private frameDims(): { width: number; height: number } {
+    const { width, height } = this.visibleSize();
+    const cap = Math.min(this.previewCap / width, this.previewCap / height, 1);
+    return {
+      width: Math.max(1, Math.round(width * cap)),
+      height: Math.max(1, Math.round(height * cap)),
+    };
+  }
+
+  /** Resize the frame canvas to the current visible region and redraw. */
+  private updateFrameGeometry(): void {
+    const { width, height } = this.frameDims();
+    if (this.frameCanvas.width !== width || this.frameCanvas.height !== height) {
+      this.frameCanvas.width = width;
+      this.frameCanvas.height = height;
+      this.fabricImage.set({ width, height });
+    }
+    this.drawFrame();
+  }
+
+  private buildFrameCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+    const { width, height } = this.frameDims();
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("[Retouch] Failed to create preview frame context");
+    return { canvas, ctx };
+  }
+
+  /** Resize a scratch canvas to the frame size, allocating on first use. */
+  private frameSizedScratch(which: "warpSrc" | "lensSrc"): HTMLCanvasElement {
+    let canvas = this[which];
+    if (!canvas) {
+      canvas = createCanvas(1, 1);
+      this[which] = canvas;
+    }
+    if (canvas.width !== this.frameCanvas.width || canvas.height !== this.frameCanvas.height) {
+      canvas.width = this.frameCanvas.width;
+      canvas.height = this.frameCanvas.height;
+    }
+    return canvas;
+  }
+
+  private drawFrame(): void {
+    this.drawFrameTo(this.frameCtx, this.carvedSource ?? this.source, true);
+    if (this.split !== null) this.drawBeforeFrame();
+  }
+
+  /** The compare split's left side: same framing, no liquify, no look edits. */
+  private drawBeforeFrame(): void {
+    if (!this.beforeFrame) this.beforeFrame = createCanvas(1, 1);
+    const frame = this.beforeFrame;
+    if (frame.width !== this.frameCanvas.width || frame.height !== this.frameCanvas.height) {
+      frame.width = this.frameCanvas.width;
+      frame.height = this.frameCanvas.height;
+    }
+    const ctx = frame.getContext("2d");
+    if (!ctx) return;
+    this.drawFrameTo(ctx, this.beforeSource ?? this.carvedSource ?? this.source, false);
+  }
+
+  /**
+   * Draw the oriented, cropped source through the geometric warps
+   * (keystone, lens, and optionally liquify) into `dest`, a frame-sized
+   * canvas context.
+   */
+  private drawFrameTo(
+    dest: CanvasRenderingContext2D,
+    source: CanvasImageSource,
+    withLiquify: boolean,
+  ): void {
+    const oriented = this.orientedSize();
+    const visible = this.visibleSize();
+    const scale = this.frameCanvas.width / visible.width;
+    const cropOn = this.cropActive();
+
+    // Geometric warp stages, applied in order after the base draw.
+    const stages: Array<(src: HTMLCanvasElement, dst: CanvasRenderingContext2D) => void> = [];
+    if (hasKeystone(this.keystoneV, this.keystoneH)) {
+      stages.push((src, dst) => applyKeystone(src, dst, this.keystoneV, this.keystoneH));
+    }
+    if (hasLens(this.lensDistortion, this.lensDevignette)) {
+      stages.push((src, dst) =>
+        applyLensToCanvas(src, dst, this.lensDistortion, this.lensDevignette),
+      );
+    }
+    const liquify = this.liquify;
+    if (liquify && withLiquify) {
+      stages.push((src, dst) => applyLiquifyToCanvas(src, dst, liquify));
+    }
+
+    // With warp stages active, draw into a scratch canvas first, then run
+    // the chain into the destination.
+    let target: CanvasRenderingContext2D | null = dest;
+    if (stages.length > 0) {
+      target = this.frameSizedScratch("warpSrc").getContext("2d");
+      if (!target) return;
+    }
+
+    const sw = this.srcWidth();
+    const sh = this.srcHeight();
+    target.save();
+    target.setTransform(1, 0, 0, 1, 0, 0);
+    target.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
+    applySourceTransform(target, {
+      sourceWidth: sw,
+      sourceHeight: sh,
+      orientation: this.orientation,
+      flipH: this.flipH,
+      flipV: this.flipV,
+      scale,
+      offsetX: cropOn ? this.crop.x * oriented.width * scale : 0,
+      offsetY: cropOn ? this.crop.y * oriented.height * scale : 0,
+    });
+    target.drawImage(source, -sw / 2, -sh / 2, sw, sh);
+    target.restore();
+
+    // Ping-pong between the two scratch canvases; the last stage lands in
+    // the destination.
+    let src = this.warpSrc;
+    for (let i = 0; i < stages.length; i++) {
+      if (!src) return;
+      if (i === stages.length - 1) {
+        stages[i](src, dest);
+      } else {
+        const next = this.frameSizedScratch(src === this.warpSrc ? "lensSrc" : "warpSrc");
+        const nextCtx = next.getContext("2d");
+        if (!nextCtx) return;
+        stages[i](src, nextCtx);
+        src = next;
+      }
+    }
+  }
+
+  /** Paint the "before" frame left of the divider, placed exactly like the image. */
+  private drawSplit(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    const frame = this.beforeFrame;
+    if (this.split === null || !frame || frame.width === 0) return;
+    const x = Math.round(this.split * width);
+    if (x <= 0) return;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.beginPath();
+    ctx.rect(0, 0, x, height);
+    ctx.clip();
+    ctx.clearRect(0, 0, x, height);
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate((this.rotation * Math.PI) / 180);
+    ctx.scale(width / frame.width / this.straightenFit, height / frame.height / this.straightenFit);
+    ctx.drawImage(frame, -frame.width / 2, -frame.height / 2);
+    ctx.restore();
+  }
+
+  private startLoop(): void {
+    if (this.looping || !this.video) return;
+    this.looping = true;
+    const video = this.video as VideoWithRVFC;
+    const rvfc =
+      typeof video.requestVideoFrameCallback === "function"
+        ? video.requestVideoFrameCallback.bind(video)
+        : null;
+    const schedule = (cb: () => void) => {
+      if (rvfc) rvfc(cb);
+      else requestAnimationFrame(cb);
+    };
+    const step = () => {
+      if (!this.looping) return;
+      this.renderFrame();
+      schedule(step);
+    };
+    schedule(step);
+  }
+
+  private stopLoop(): void {
+    this.looping = false;
+  }
+
+  /** The post passes as they stand. */
+  private postPasses(): PostPasses {
+    return {
+      clarity: this.adjustments.clarity,
+      dehaze: this.adjustments.dehaze,
+      masks: this.preparedMasks,
+      hueTable: this.hueTable,
+      curveLuts: this.curveLuts,
+      stylize: this.stylize,
+    };
+  }
+
+  /**
+   * The post passes on the GPU; true when they ran, or there are none. The
+   * GPU runner is made on first need, and given up on if it ever fails.
+   */
+  private runGpuPasses(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement): boolean {
+    const passes = this.postPasses();
+    if (postPassesAreNeutral(passes)) return true;
+    if (this.gpu === undefined) this.gpu = GpuPasses.create();
+    if (this.gpu?.apply(ctx, el, passes)) return true;
+    this.gpu?.dispose();
+    this.gpu = null;
+    return false;
+  }
+
+  /** The same passes on the CPU, as export runs them. */
+  private runCpuPasses(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement): void {
+    const { width, height } = el;
+    if (!detailIsNeutral(this.adjustments.clarity, this.adjustments.dehaze)) {
+      applyDetailToContext(ctx, width, height, this.adjustments.clarity, this.adjustments.dehaze);
+    }
+    if (this.preparedMasks.length > 0) {
+      applyMasksToContext(ctx, width, height, this.preparedMasks);
+    }
+    if (this.hueTable) applyHslToContext(ctx, width, height, this.hueTable);
+    if (this.curveLuts) applyCurvesToContext(ctx, width, height, this.curveLuts);
+    if (!stylizeIsNeutral(this.stylize)) applyStylizeToContext(ctx, width, height, this.stylize);
+  }
+
+  private applyFilters(): void {
+    this.fabricImage.filters = buildFabricFilters(
+      this.adjustments,
+      this.filter,
+      this.filterStrength,
+    );
+    this.fabricImage.applyFilters();
+  }
+}

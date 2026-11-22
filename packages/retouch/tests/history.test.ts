@@ -1,0 +1,206 @@
+import { createHistory } from "../src/utils/history";
+
+interface State {
+  value: number;
+}
+
+/** Drives createHistory against a plain mutable object. */
+function setup(debounceMs = 350) {
+  const live: State = { value: 0 };
+  const restored: State[] = [];
+  const history = createHistory<State>({
+    snapshot: () => ({ ...live }),
+    restore: (s) => {
+      live.value = s.value;
+      restored.push({ ...s });
+    },
+    debounceMs,
+  });
+  return { live, restored, history };
+}
+
+describe("createHistory", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("coalesces rapid records into one checkpoint", () => {
+    const { live, history } = setup();
+    for (let i = 1; i <= 5; i++) {
+      live.value = i;
+      history.record();
+    }
+    vi.advanceTimersByTime(350);
+    expect(history.canUndo()).toBe(true);
+    history.undo();
+    expect(live.value).toBe(0); // back to initial, the 5 mid-drag values collapsed
+  });
+
+  it("undoes and redoes across distinct checkpoints", () => {
+    const { live, history } = setup();
+    live.value = 10;
+    history.record();
+    vi.advanceTimersByTime(350);
+    live.value = 20;
+    history.record();
+    vi.advanceTimersByTime(350);
+
+    expect(history.undo()).toBe(true);
+    expect(live.value).toBe(10);
+    expect(history.undo()).toBe(true);
+    expect(live.value).toBe(0);
+    expect(history.undo()).toBe(false); // nothing before initial
+    expect(history.redo()).toBe(true);
+    expect(live.value).toBe(10);
+    expect(history.redo()).toBe(true);
+    expect(live.value).toBe(20);
+    expect(history.redo()).toBe(false);
+  });
+
+  it("flushes a pending edit before undoing (undo lands before the edit)", () => {
+    const { live, history } = setup();
+    live.value = 42;
+    history.record(); // pending, not yet committed
+    expect(history.canUndo()).toBe(true);
+    history.undo();
+    expect(live.value).toBe(0);
+  });
+
+  it("drops the redo tail when a new edit follows an undo", () => {
+    const { live, history } = setup();
+    live.value = 1;
+    history.record();
+    vi.advanceTimersByTime(350);
+    live.value = 2;
+    history.record();
+    vi.advanceTimersByTime(350);
+
+    history.undo(); // back to 1
+    expect(live.value).toBe(1);
+    live.value = 99;
+    history.record();
+    vi.advanceTimersByTime(350);
+
+    expect(history.canRedo()).toBe(false); // the "2" branch is gone
+    history.undo();
+    expect(live.value).toBe(1);
+    history.redo();
+    expect(live.value).toBe(99);
+  });
+
+  it("notifies subscribers on record and undo/redo", () => {
+    const { live, history } = setup();
+    const fn = vi.fn();
+    history.onChange(fn);
+    live.value = 5;
+    history.record();
+    vi.advanceTimersByTime(350);
+    history.undo();
+    expect(fn.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not record after destroy", () => {
+    const { live, history } = setup();
+    history.destroy();
+    live.value = 7;
+    history.record();
+    vi.advanceTimersByTime(350);
+    // initial checkpoint only — nothing to undo to
+    expect(history.undo()).toBe(false);
+  });
+
+  it("exposes the timeline via entries()/cursor() and jumps to any state", () => {
+    const { live, history } = setup();
+    for (const v of [1, 2, 3]) {
+      live.value = v;
+      history.record();
+      vi.advanceTimersByTime(350);
+    }
+    expect(history.entries().map((s) => s.value)).toEqual([0, 1, 2, 3]);
+    expect(history.cursor()).toBe(3);
+
+    expect(history.jumpTo(1)).toBe(true);
+    expect(live.value).toBe(1);
+    expect(history.cursor()).toBe(1);
+    // Jumping is non-destructive: redo tail survives until the next edit.
+    expect(history.jumpTo(3)).toBe(true);
+    expect(live.value).toBe(3);
+
+    expect(history.jumpTo(3)).toBe(false); // no-op on same index
+    expect(history.jumpTo(99)).toBe(false); // out of range
+  });
+
+  it("flushes a pending edit before jumping", () => {
+    const { live, history } = setup();
+    live.value = 9;
+    history.record(); // pending, not yet committed
+    expect(history.jumpTo(0)).toBe(true);
+    expect(live.value).toBe(0);
+    expect(history.entries().map((s) => s.value)).toEqual([0, 9]);
+  });
+});
+
+describe("no-op deduplication", () => {
+  it("does not record a checkpoint when the state is unchanged", () => {
+    vi.useFakeTimers();
+    const state = { value: 1 };
+    const history = createHistory({
+      snapshot: () => ({ ...state }),
+      restore: (s) => Object.assign(state, s),
+    });
+    history.record(); // nothing changed since the initial snapshot
+    vi.runAllTimers();
+    expect(history.entries()).toHaveLength(1);
+    expect(history.canUndo()).toBe(false);
+
+    state.value = 2;
+    history.record();
+    vi.runAllTimers();
+    expect(history.entries()).toHaveLength(2);
+    expect(history.canUndo()).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("treats a change-and-revert within one debounce window as a no-op", () => {
+    vi.useFakeTimers();
+    const state = { value: 1 };
+    const history = createHistory({
+      snapshot: () => ({ ...state }),
+      restore: (s) => Object.assign(state, s),
+    });
+    state.value = 5;
+    history.record();
+    state.value = 1;
+    history.record();
+    vi.runAllTimers();
+    expect(history.entries()).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("carries on a seeded stack at its cursor", () => {
+    const state = { value: 3 };
+    const history = createHistory({
+      snapshot: () => ({ ...state }),
+      restore: (s) => Object.assign(state, s),
+      initial: { entries: [{ value: 1 }, { value: 2 }, { value: 3 }], cursor: 2 },
+    });
+    expect(history.cursor()).toBe(2);
+    expect(history.undo()).toBe(true);
+    expect(state.value).toBe(2);
+    expect(history.canRedo()).toBe(true);
+  });
+
+  it("asks `same` whether a checkpoint changed anything", () => {
+    vi.useFakeTimers();
+    const state = { value: 1, label: "" };
+    const history = createHistory({
+      snapshot: () => ({ ...state }),
+      restore: (s) => Object.assign(state, s),
+      same: (a, b) => a.value === b.value,
+    });
+    state.label = "ignored";
+    history.record();
+    vi.runAllTimers();
+    expect(history.entries()).toHaveLength(1);
+    vi.useRealTimers();
+  });
+});

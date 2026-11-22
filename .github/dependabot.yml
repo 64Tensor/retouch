@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # The runtime dependencies (fabric, mediabunny, gifenc, onnxruntime-web) and the tools, in one
+  # weekly pull request each, so CI tests every update before it lands.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      runtime:
+        dependency-type: production
+      tools:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

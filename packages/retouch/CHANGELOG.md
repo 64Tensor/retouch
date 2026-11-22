@@ -1,0 +1,586 @@
+# Changelog
+
+All notable changes to `@64tensor/retouch`, and before 0.3.0 to `@64tensor/retouch-ml` as well.
+Both packages share one version number and follow [Semantic Versioning](https://semver.org/).
+From 0.3.0 on, each release's entries come from the changesets merged for it; earlier releases
+follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+Up to 0.2.0 the packages were published as `@9tensor/retouch` and `@9tensor/retouch-ml`.
+
+## 0.3.0
+
+The first release from 64Tensor. The packages move to the `@64tensor` scope, and everything
+added since 0.2.0 comes with them.
+
+### Packaging
+
+- Renamed to `@64tensor/retouch` and `@64tensor/retouch-ml`. Install the new names; the
+  `@9tensor` packages get no further releases.
+- ES modules only. The CommonJS builds are gone: every bundler and current Node read ES
+  modules, and one build means one set of types.
+- The docs (`docs/`) and this changelog ship inside the package, so they always match the
+  version installed.
+- Releases are published from GitHub Actions through npm's trusted publishing, with
+  provenance: npm shows which commit and workflow built each version.
+
+### Added
+
+- `renderLook(source, look, { maxDimension })` draws an image, canvas, video frame or
+  `ImageBitmap` with tone and color settings (adjustments, filter, curves, color mixer, stylize),
+  through the editor's own pipeline, so it matches what the editor shows. Every setting in a
+  `Look` is optional.
+- `openEditor(id, { look })` opens the editor with those settings laid over the photo's own, as
+  one step: Undo takes them back and Cancel leaves the photo as it was.
+- The editor's header says what's running in the background, beside Cancel, whichever tool is
+  open: an AI tool's run or its model's download, how far along it is (with the time left on a
+  download) and Stop, then for a few seconds how it ended. A click opens that tool again.
+- `ctx.tasks`, so any tool's background work shows there too: `start()` a task, report on it,
+  and stop when its `signal` says so. Downloads go in it with `download: true`.
+- `ctx.undoable()`, to keep some of a tool's own state in the editor's history beside the edits,
+  and `ctx.record(label)`, to take a step at once under a name of the tool's own.
+- What Detect, Track and Read text find is now a layer of its own over the photo or video, drawn
+  and handled one way in all three. Point at a box or a row to bring it forward on both sides and
+  dim the rest. Click to pick it, and click again, click the bare photo or press Esc to let go.
+  The actions work on the pick, or on everything without one: mask, pixelate or crop to one face,
+  copy one line. Boxes keep their place through a crop and survive switching tools and reopening
+  the photo, undo brings them back with their pixels, and **Hide boxes** clears the view. A drag
+  across a box on a zoomed photo still pans.
+- `ctx.objects()`: the same layer for any tool, with its rows, hover and pick wired together.
+- `setHighlight()` on `ctx.ui.list()`: light a row as if pointed at, scrolling the list to it.
+- Crop to a shape. Beside the rectangle, Crop has an ellipse, a circle, a star, a heart, a hexagon
+  and a triangle, each in the same frame with the same handles and aspect tiles; **Corners** to
+  round a rectangle's; **Freehand**, an outline drawn on the photo; and **Points**, an outline
+  placed a click at a time, closed on its first point (Backspace takes the last one back). A
+  **Soft edge** fades the cut in, and **Keep: Outside** punches the shape out of the photo
+  instead. What a shape leaves out turns transparent, in the preview, the export and the gallery,
+  and a shape cut inside another keeps only what both hold. Shapes turn and flip with the photo,
+  and undo, history and Reset treat them as part of the crop. Photos only.
+- `CropShape`, and `cropShapes` on `ImageEdits`: the shapes cut from the cropped frame, as
+  outlines normalized over it.
+- A crosshair follows the mouse over the photo, with the pixel it's on beside it, counted in the
+  photo as it'll come out. It's on by default; a button on the zoom bar turns it off, and the
+  choice is remembered.
+- Compare's side by side zooms and moves: each pane has its own zoom bar, and the original stays
+  sharp as it zooms. A lock between the panes keeps them zooming and moving together. It's on by
+  default, and remembered. Where a crop or turn has given them different frames, they keep the
+  same zoom and relative position, not the same pixel.
+- Side by side outlines the result on the original, and dims what it left out: a box for a crop,
+  tilted for a straighten, bent for perspective and lens corrections. It follows edits as they're
+  made, and crops and turns already baked in with Done. Liquify and content-aware width don't
+  move it.
+- Zoomed in, drag the photo to move around it, with a mouse as with a finger. In Crop that works
+  while the frame still covers the whole photo, and around it after. Tools that draw on the photo
+  keep the drag, and say once how to move instead: Space or the middle button. A sideways scroll
+  pans too.
+- **Info**, a built-in tool at the foot of the rail: what the file says about the photo. The
+  file, camera and lens, exposure, location (with a map link), description and rights, an
+  image generator's prompt, color profile and Content Credentials, then every EXIF, GPS, XMP,
+  IPTC, ICC, PNG and WebP field, raw, to read or copy. Read on the device, without
+  dependencies; `readMetadata(file)` and `describeMetadata()` do the same outside the editor.
+- Info edits metadata. The name, camera and lens, date and exposure, location, title, caption,
+  keywords, creator, copyright, license, source, rating and place change where they stand, and
+  empty rows can be filled in. Each change is one undo step, and Esc puts a value back. Exports
+  carry what you changed, as EXIF and XMP (and text chunks in a PNG), in JPEG, PNG and WebP, and
+  only that: the rest of the file's metadata, location included, still stays out.
+- **Read text**, an AI tool in `@9tensor/retouch-ml`: it finds every line of text in a photo,
+  at any angle, and reads it in 32 Latin-script languages, accents included, with PaddleOCR's
+  PP-OCRv4 detector and PP-OCRv5 Latin recognizer (13 MB together, Apache-2.0). The lines are
+  outlined on the photo and listed in reading order, to copy, or to pixelate in place.
+  `recognizeText(image)` returns them without the editor, and `linesToText()` joins them.
+- `ctx.ui.output()`: a read-only block of text a tool produced, selectable and scrollable.
+- **Object tracking** in `@9tensor/retouch-ml`: `trackVideo(video)` runs YOLOX-nano on a clip's
+  frames and follows each object from the frame it enters to the frame it leaves under one
+  number, returning every frame's boxes and a summary of each track. `createTracker()` does the
+  matching for detections from any source. Tracks match by overlap with where each one is
+  heading, hold through a class the detector wavers on and a few missed frames, and aren't
+  numbered until they've been seen three times.
+- **Track**, an AI tool for videos in `@9tensor/retouch-ml`: it follows everything, or only
+  people, vehicles or animals, through the trimmed clip, then plays each track boxed and
+  numbered with a trail of where it's been, and lists them on a timeline. Pick one to jump to
+  it, trim the video to it or crop to where it goes (each one step you can undo), or save the
+  tracks as JSON.
+- Compare offers a choice of view once it's on, **Divider** or **Side by side**, and the browser
+  remembers it.
+- `ctx.ui.list()`: rows to pick from, each with a swatch, a note and optionally a span on a
+  timeline, with a playhead and the current rows lit.
+- The demo page shows video: a **Track** lab that plays two clips with every person and bike
+  followed (it runs the tracker again on the device, or opens the clip in the editor's Track
+  tool), a clip graded live as it plays, and a video in the gallery to trim and grade.
+- **Download** beside the photo's name in the editor saves the photo as it is now, edits and new
+  name included, in its own format. The format beside it opens a menu of PNG, JPG, WebP and AVIF,
+  those this browser can write, to save it as another, and the format picked there becomes the
+  default, remembered in this browser. Saving transparent areas as JPG asks first: fill them
+  with white, or save a PNG instead. A crop frame not applied yet is asked about first, as Done
+  does.
+- `downloadImage(id, { format })` saves a photo in the format given.
+- `decodeSamCandidates()` and `candidateMask()` in `@9tensor/retouch-ml`: every shape the
+  Select model proposes for a set of clicks, and any one of them as a mask at any size.
+- Every AI tool leads with where its model stands, the same way in each: a **Download** button
+  with the size, then the same button filling up with how much is in and the time left, then
+  **Ready**. Which model it is, its size and what it runs on sit behind an info button. The
+  tool's own button says what it does and comes on once the model is here; the run shows on one
+  line under it, with a check when it's done, then what to do next. A download carries on, and
+  shows, when the tool is reopened or another tool needs the same model. The AI tools menu says
+  Ready beside each tool whose model is saved.
+- `ctx.ui.model()`: a model's Download, its progress and time left, Ready, and an info panel.
+  `ctx.ui.status()`: a run on one line, working, done or failed. `ready` on a registered tool
+  marks it Ready in the AI tools menu.
+- `@9tensor/retouch-ml` ships `THIRD_PARTY_NOTICES.md`, with every default model's copyright lines
+  and license text, and `third-party-models.json`, with each file's pinned URL, size, SHA-256,
+  license evidence and training data. A test fails if a default URL changes without its record.
+
+### Changed
+
+- The AI command bar asks `claude-haiku-5-5` by default, where it asked `claude-haiku-4-5`.
+  The request is the same. Set `ai.model` to keep another model.
+- **Select** works differently. Pointing at the photo outlines what a click would select; a
+  click selects it, and a click on something else selects that instead. The panel shows each
+  shape the model offers for the click (Small, Medium, Large) as a picture to pick from. Esc or
+  **Deselect** clears it without closing the editor. Each click, shape pick and deselect is a
+  step in the editor's history, named in its menu, so its Undo and Redo (⌘Z, ⇧⌘Z) take them
+  back, and undoing **Erase it** brings back what was selected. With the model saved, the photo
+  is read as soon as the tool opens.
+- `downloadImage(id)` and the gallery's Download save a photo in its own format, a JPG as JPG,
+  instead of always as PNG, unless a format was picked from the editor's Download menu or the
+  `export` option names one. A photo with transparent areas that format can't keep goes out as
+  PNG.
+- Gallery thumbnails keep a photo's transparent areas (a cutout, a shaped crop) instead of filling
+  them with white.
+- Face detection downloads UltraFace from its author's own repo, because the ONNX Model Zoo it came
+  from is deprecated. The file is byte-for-byte the same, so results don't change, though it
+  downloads once more. A host with a Content Security Policy needs to allow
+  `raw.githubusercontent.com` in place of `media.githubusercontent.com`.
+- The AI models' browser cache has a new name, so each model downloads once more after updating.
+- AI run buttons say only what they do ("Erase", not "Erase · 208 MB") and no longer start a
+  download: **Download** does, once. Select's **Start selecting** is gone with it, and **Erase
+  it** offers Erase's download right under it while that model isn't saved. Detect downloads its
+  face and object models together. The sizes shown are what actually downloads: Cutout 26 MB,
+  Select 40 MB, Detect 4.9 MB, Track 3.7 MB.
+- AI tools that change a photo's pixels (Cutout, Erase, Denoise, Depth blur, Pixelate) are now
+  steps in the editor's history: undo takes them back, and the history menu names them.
+  `replaceImageSource(id, file, { label })` adds such a step; the editor stays on the same tool.
+- Cutout clears the background of the photo itself, as a PNG, instead of adding a new image to
+  the gallery, so Compare shows the photo before and after.
+- A crop waits for an explicit OK. Moving the frame, or picking an aspect, only proposes a crop:
+  **Apply** (or Enter) crops, and **Cancel** (or Esc) puts the frame back. Leaving Crop for
+  another tool, or pressing Done, with a frame that wasn't applied asks first: Apply or Discard,
+  or Esc to keep cropping. Before, switching tools or pressing Done applied it without asking.
+- Liquify and the rotate buttons have new icons: a bulging grid, and a frame with a quarter-turn
+  arrow. The old Liquify icon looked like search.
+
+- The preview runs clarity, dehaze, masks, the color mixer, curves and stylize on the GPU
+  (WebGL2): 4–30 ms a frame where the CPU took 40 ms to 2.5 s, so zooming, sliders and video
+  playback no longer stall on edited photos. Results match the CPU passes within a level or two;
+  export still runs the CPU passes, and so does the preview where WebGL2 is missing or fails.
+
+### Fixed
+
+- `closeEditor(false)` now cancels the way the Cancel button does: the entry's settings go back
+  to how they were when the editor opened. It used to keep whatever was changed.
+- The editor's top bar no longer slides the file name under Cancel at medium widths, roughly
+  560 to 900 pixels, or in a narrow column of a wider page; nor does the title run into the
+  buttons beside it. When the bar is too narrow for every label, the size chip and the Download
+  label go and the buttons keep their icons. The bar goes by its own width, not the window's. A
+  busy activity indicator keeps at least its progress ring, and when Stop no longer fits beside
+  it, Stop goes whole instead of showing half its icon. On the smallest phones, under about 350
+  pixels, Download no longer runs into Done while something is running.
+- A cropped photo saved as JPG no longer asks to fill transparent areas it doesn't have. A crop
+  that fell between pixels, as most do, came out with a faint transparent edge; crops now cut on
+  whole pixels, and a square crop comes out square.
+- Saving as JPG turned transparent areas black. They're white now.
+- Starting something in another tool while a run that changes the photo was going lost it
+  without a word: Erase, say, finished, swapped the photo and rebuilt every tool, Find faces with
+  it, and Detect then ignored clicks until its lost run was over. Now the editor asks first: stop
+  Erase and find faces, or let Erase finish. Done and Cancel ask the same, so a run can't land on
+  the photo after the editor has closed. A stopped run changes nothing.
+- Compare's divider put what a tool draws over the photo on both sides: in Select, the selection
+  dimmed and outlined Before as well, so the two sides looked alike. Before is the photo as it was
+  now. A selection, found boxes, brush strokes and mask handles stay on After, and clicks on
+  Before don't reach the tool.
+- Denoise, Cutout and Erase never said they were done: replacing the photo reset the panel while
+  the run was still spinning. They now end with a check: Noise removed, Background removed,
+  Erased.
+- Replacing the photo (Denoise, Cutout, Erase, Depth blur, pixelating, or undoing one of them)
+  turned Compare off and reset the zoom. Compare, its view, and the zoom and position now stay.
+- Replacing the photo blinked as if the page had reloaded: the editor rebuilt on the new pixels
+  faded in from clear, showing the page behind it, and its panels slid in again. It's there at
+  once now, with the photo drawn from its first frame.
+- Model license records that didn't hold up at source. SCUNet is listed as Apache-2.0 or MIT, since
+  its sources differ. GFPGAN is no longer marked as cleared for the planned face restoration. The
+  docs no longer call BiRefNet the default or the pinned repos "upstream", and they say the MIT
+  license doesn't cover model weights. Every row of the license audit is now checked at source
+  and dated: BLIP's model card says research only, YuNet trains on the same WIDER FACE data as
+  UltraFace, and DDColor and SAM2 now have licensed exports.
+- A **mask** dragged on the photo no longer snaps back to where it was when you next move one of
+  its sliders, invert it, or add or delete a mask.
+- The tool panel no longer jumps when its **Reset** button comes and goes. The button was taller
+  than the title beside it, so showing it pushed every control down a few pixels.
+- Dragging a **Perspective** slider could freeze the whole browser. Each step drew the photo as a
+  strip per row and per column, thousands of GPU draws, and a drag queued them faster than they
+  were drawn. The warp now works on the pixels directly, as Lens does, and both redraw at most
+  once a frame while you drag.
+- Detect's **Crop to it** crops to the box. It framed every find like a portrait, with wide room
+  at the sides and twice as much below as above, so an object crop spread to most of the photo.
+  It now leaves the same even room as Track's.
+- A crop fills the stage. Cropping to a small area stopped at its own pixels, so the result sat
+  there as a small picture, which read as the photo having shrunk rather than been cropped. **1:1**
+  is off while a crop is enlarged to fit.
+- Keys named in the editor's messages (Space, Enter, Shift, the arrows, the brush's `[` and `]`)
+  look like the shortcuts on the rail, rather than plain words. So do the keys on the tooltips of
+  Undo, Redo, Compare, the zoom buttons, Play/Pause, Apply and Clear selection, and each shows the
+  keys of the computer it is on.
+- A crop corner pulled off in one direction no longer stays stuck on it. A drag keeps to the
+  direction it starts in only through the hand's drift: once the pointer heads clearly off it, the
+  drag follows the pointer. The same goes for moving the crop frame, mask handles and curve points.
+- The mouse wheel zooms the photo at the pointer, easing in a step a notch. It used to scroll
+  the page behind the editor. A trackpad's up-and-down scroll now zooms too.
+- The page behind the editor is locked while it's open, and its scroll bar is gone.
+- Scrolling over a value in Info moves the panel. Each value was its own scroll box, which kept
+  the wheel from reaching the panel; long ones now fold, with **Show all**.
+- Compare did nothing you could see in Crop, and after only a crop or turn, where both sides of
+  the divider are framed alike. Crop now shows the two side by side, and so does Compare after a
+  change of framing, until you pick a view.
+- The photo no longer flashes during a Liquify drag. Each stroke resized the canvas to the size
+  it already had, which blanked it until the next frame; it now resizes only when the size changes.
+- Pinch and ⌘/Ctrl + wheel zoom no longer stall on edited photos. Zoomed in, the canvas is drawn
+  with no more device pixels than the preview has (on a 2× screen it was drawn at four times
+  that), and it's redrawn only when it needs another size, ahead of the zoom.
+- Dragging the crop frame keeps the cursor it started with until the drag ends. With a fixed
+  shape, the pointer soon left the corner handle and showed the frame's move cursor.
+- The rotate-right icon was drawn mostly outside its box.
+
+## [0.2.0] — 2026-10-18
+
+The first release of `@9tensor/retouch` and `@9tensor/retouch-ml` on npm. It carries everything
+in 0.1.0, which was prepared but never published, and adds a redesign of every screen, called
+Safelight: an editor on a graphite stage with an inspector, a contact-sheet gallery, a drop zone,
+phone layouts, motion, and AI tools that say what they'll download before they do. Plugins get
+a UI kit (`ctx.ui`) that keeps their panes matching the built-in tools, and theming takes one
+variable for a brand color. See [Writing a tool](docs/PLUGINS.md) and [Theming](docs/THEMING.md).
+
+### Upgrading from 0.0.2
+
+Each of these is explained under [0.1.0](#010--2026-09-19) below.
+
+- Install `@9tensor/retouch` in place of the old package and update imports. The AI tools are
+  `@9tensor/retouch-ml`.
+- Video is accepted by default. Pass `acceptedVideoTypes: []` to accept only images, as before.
+- Done bakes edits into the image. Pass `commitMode: "keep-edits"` to keep them parametric
+  until export, as before.
+- Entries can be images or videos: `getEditingEntry()`, `images:add` and `editor:done` carry
+  either, and `isImageEntry()` / `isVideoEntry()` tell them apart. `getImages()` is deprecated
+  in favor of `getMedia()`.
+- `ImageEdits` is the full edit model now; code that builds one by hand needs every field.
+- `fabric` is a dependency; `mediabunny` and `gifenc` load only when video or a GIF is exported.
+
+Nothing else is needed for the redesign: options, methods and events from 0.1.0 work as they
+did, and custom tools built by hand from the `rt-dock__*` classes still render.
+
+### Added
+
+- `theme: "light" | "dark" | "auto"` and `setTheme()` for the drop zone and gallery. Dark uses the
+  editor's darkroom tokens; auto follows the OS setting.
+- `ctx.ui` for custom tools: `row`, `section`, `slider`, `button`, `choice` and `note` build pane
+  controls that match the built-in tools (types exported as `ToolUi`, `UiSlider`, and so on).
+- Tokens: type families and scale (`--rt-font-*`, `--rt-type-*`),
+  `--rt-shadow-float`, `--rt-highlight`, `--rt-prism`, `--rt-radius-full`, `--rt-dur-4`, and a
+  spring easing, `--rt-ease-spring`.
+- Zoom and pan in the editor: zoom controls at the foot of the stage (−, +, Fit, 1:1), ⌘/Ctrl +
+  wheel or trackpad pinch to zoom at the pointer, `+` `-` `0` keys, and wheel, Space-drag (images)
+  or middle-drag to pan. Up to 800%; the canvas redraws sharp up to the preview's resolution and
+  magnifies past it, with crop handles and mask gizmos keeping their size.
+- A live RGB histogram heads the inspector for the tone and look tools.
+- Letter shortcuts for tools (C, T, L, A, V, H, M, S, F; R for Trim) with hover tooltips naming
+  each tool and its key. `I` opens the AI tools menu.
+- Plugin tools take `group` (`"frame" | "tone" | "looks" | "plugins" | "ai"`, type `ToolGroup`),
+  `shortcut`, and, for the AI menu, `description` and `badge`. `@9tensor/retouch-ml` tools use them.
+- A before/after divider for images: Compare (or `\`) lays it across the photo; drag the grip or
+  use the arrow keys. The left side is the photo without its look edits but framed the same way,
+  so the halves line up at any zoom. After a commit it shows the pristine original, unless a
+  committed crop or turn means it can't line up, in which case Compare shows the two side by side.
+- Sliders show their value as a field you can type into (`↑`/`↓` step it), mark themselves with a
+  dot when they're off neutral, and reset on a double-click of the label or the track. Color
+  sliders draw what they do on their tracks.
+- The inspector's Reset clears the active tool's edits; the top bar's button now reads "Reset all".
+- `ctx.ui.tiles()` builds preview tiles and `ctx.preview(edits)` draws the photo with a look
+  applied for them (types `UiTiles`, `UiTilesOptions`, `UiTileOption`, `PreviewEdits`). Sliders
+  from `ctx.ui.slider()` take `track` and `parse`.
+- A brush ring for Liquify and the ML package's Erase, sized to the brush; `[` and `]` resize the
+  Liquify brush.
+- AI tools explain themselves before they cost anything. `@9tensor/retouch-ml` panes open on a card with
+  the model, its download size and where it runs; the run button names the download ("Erase ·
+  208 MB") until the model is saved; Select asks before downloading instead of starting
+  on a click; runs show download, run and save steps, with a progress bar; and results wipe in
+  over the photo. Without `openResults`, a finished gallery result offers "Open it".
+- Ask AI replies are cards listing what they set ("Contrast +15", "Warm filter") with an Undo for
+  exactly that step, and suggestion chips sit above the input.
+- Plugin kit: `ctx.ui.card()`, `ctx.ui.steps()`, `button({ variant: "ai" })`, slider
+  `ariaLabel` and `fillFrom`, and `ctx.reveal(result)` to wipe a result in before committing it (types `UiCard`,
+  `UiCardOptions`, `UiSteps`, `UiStepsOptions`, `UiStep`, `UiStepState`).
+- `@9tensor/retouch-ml`: `isModelCached(urls)`.
+- AI tools get their own section on the rail, lit by the prism. The first three sit on the rail
+  from the start; the AI menu (now "All AI tools") lists every one with a pin, so people keep the
+  ones they use on the rail. A toggle at the rail's foot shows tool names, keys and, for AI tools,
+  a line on what each does. Both choices persist per browser; hosts set the starting layout with
+  `rail: { pinned, expanded }` (type `RailOptions`).
+- A rail taller than the screen fades at the end with more to scroll; short screens get a denser
+  rail.
+- Transparent pixels show as a checkerboard in the editor.
+- A new drop zone: a stack of prints that fans out when files are dragged over, the accepted
+  formats, and **Choose files** and **Paste** buttons. ⌘/Ctrl+V adds pasted images while the drop
+  zone or gallery is up and nothing else on the page has focus.
+- The gallery is a contact sheet: justified rows at true aspect ratios (the new default layout),
+  frame numbers, an Edited badge and video lengths. Layouts are Rows, Grid (square crops),
+  Filmstrip and List, remembered per browser. Frames can be selected (the circle, ⌘/Ctrl-click,
+  Shift to extend, ⌘/Ctrl+A, Esc to clear) and downloaded or removed together; a selection is
+  circled like a grease pencil on a contact sheet. `GalleryViewMode` adds `"rows"` and `"grid"`.
+- Removing from the gallery offers Undo for a few seconds. The removal fires `images:remove` at
+  once, and Undo fires `images:add` for the entries it puts back, in their old places.
+- The export sheet shows every file's thumbnail with a ring that fills as it exports, a check or a
+  mark when it's done, one bar for the run, the time left, and Cancel (or Esc). It opens straight
+  away for runs with video and after 400 ms for images, so quick runs don't flash it.
+- Toasts take a detail line and one action, pause while pointed at or focused, and stack three at
+  most.
+- Phones and upright tablets get a bottom sheet for the controls: drag its bar or header between
+  just the header, about half, and most of the screen (a fling carries on), tap the bar to step
+  it up, or tap the active tool again to fold it away; the stage refits once the sheet rests.
+- Touch on the stage: pinch to zoom, two fingers to pan, one finger on the photo to pan once zoomed
+  in, and double-tap to zoom in or back to fit. While two fingers are down, tools don't hear them.
+- The tools row along the bottom of a phone settles on whole buttons and keeps the active tool in
+  view. On phones, Ask AI moves to the sheet's header, and its chat pins under the top bar at full
+  width.
+- Motion. Opening a photo zooms it from its gallery frame onto the stage, and Done or Cancel
+  settles it back into its frame, which already shows the edits (a view transition; without the
+  API, the editor cross-fades). The editor's panels slide in from their edges; the drop zone deals
+  its prints; the gallery rises in and new frames cascade into it; toasts glide aside for each
+  other; each exported file's check springs in, and a finished export shows a check and a green bar
+  before it lets go; the AI result wipe has a prism edge. Reduced motion turns all of it off,
+  delays included, and nothing waits on an animation to finish.
+- `openEditor(id, { tool })` opens the editor on a given tool, such as `"adjust"` or a plugin's id
+  (type `OpenEditorOptions`). Without it, or for a tool the editor doesn't offer, it opens on the
+  first tool as before.
+- Guides for [writing a tool](docs/PLUGINS.md) and [theming](docs/THEMING.md), and screenshots in
+  the README (`node scripts/screenshots.mjs` retakes them from a running demo).
+- The demo is now the landing page for retouch.9tensor.com: the live editor with five sample
+  photos already in its gallery, a before/after hero that Rétouch renders in the page (Edit this
+  photo opens it on those settings), and sections that show real output: a color mix, the Looks
+  plugin's looks, and what Erase, Select, Cutout and Upscale made of these photos. It has a social
+  preview image, an icon and the 9Tensor footer. The photos are from Unsplash, credited on the page
+  and in `demo/public/photos/CREDITS.txt`.
+
+### Changed
+
+- Branding takes one variable: the accent's hover, washes, text color and the focus ring derive
+  from `--rt-accent` (and `--rt-danger-soft` from `--rt-danger`). The default palette renders the
+  same.
+- The editor's frame is redesigned. Floating panels sit on a graphite stage; the control strip
+  under the canvas became an inspector on the right, and the tool rail groups tools (frame, tone,
+  looks, then plugins), with the AI tools gathered behind one launcher when there are two or
+  more. The rail orders tools by group: the `tools` option picks which appear and their order
+  within a group, and the number keys follow the rail.
+- Dark tokens (the editor and the shell's dark theme) move to graphite neutrals and a brighter
+  accent, `#F5753F`.
+- On narrow windows (760 px and below) and upright tablets, the editor stacks: stage, then the
+  inspector, then the rail along the bottom edge.
+- Every tool pane is rebuilt for the inspector. Adjust shows all 14 sliders in four folding
+  sections (Light, Color, Effects, Detail) instead of one slider picked by chip. Curves spans the
+  inspector's width with an input → output readout. Color mix picks bands from swatches and draws
+  its sliders in the band's color. Filters, Stylize and the demo's Looks are preview tiles drawn
+  from the photo. Crop has aspect tiles, a straighten ruler and rotate/flip buttons, and no Apply
+  button (the crop applies on tool switch, Enter or Done). Masks are a list with invert and delete
+  on each row, and all six local sliders visible.
+- `ctx.ui.section()` returns a titled group whose controls stack, matching the built-in sections.
+- The Transform straighten slider moves in 0.1° steps.
+- `@9tensor/retouch-ml` panes are built with `ctx.ui`, so they follow the editor's design; status text is
+  rewritten in plain language.
+- Rejected files make one toast per batch ("3 files couldn't be added · 2 unsupported · 1 too
+  large") instead of one each, and a single rejection says what would have worked. Failed exports
+  make one toast per run, named for the file, and say the original went out instead.
+- The 0.1 gallery layouts open as their nearest new one: `"cols-2"`, `"cols-3"` and `"cols-4"` as the
+  grid, `"width-fit"` as rows.
+- In the gallery and drop zone, every control is 44 px on touch screens.
+- `downloadImage()` falls back to the original file when an image fails to export, as `exportAll()`
+  does, instead of rejecting.
+- On touch screens, the editor's controls are 44 px (sliders get a bigger thumb, handles on the
+  photo a wider grab area), fields are 16 px so iOS doesn't zoom into them, and hints drop their
+  keyboard shortcuts. The zoom controls appear once the photo is zoomed.
+- Video on phones puts the trim filmstrip on a row of its own, the full width.
+- A phone on its side keeps the three-column editor, compacted, instead of stacking it into a
+  sliver; the names toggle and the dense rail are for laptop-sized screens only.
+- The editor uses the visible screen height (`100dvh`) and keeps clear of notches and the home
+  indicator (`env(safe-area-inset-*)`).
+- A state change is current at once (`state`, events), while the view swap can wait a frame for
+  its transition.
+- Resting the mouse on the rail's All AI tools button opens the AI tools menu; it closes once the
+  pointer has left both the button and the menu. A click, or the I key, still opens it to stay,
+  with focus inside. Keyboard focus on the button shows its tooltip as before.
+- AI run buttons lead with the action and then the download: "Erase · 208 MB" instead of
+  "Download 208 MB and erase". A label too long for its button wraps inside it instead of
+  spilling past the edges.
+- With an aspect preset (Square, 4:3, …) the crop frame shows only its corners. Its side handles
+  looked like they'd move one edge, but the shape made the whole frame follow; they come back
+  with Free, and the hint under the presets says which handles to drag.
+- Drags keep to the direction they start in: crop corners and moving the crop frame, every mask
+  handle, and curve points. A pull that sets off straight up, down or across stays on that axis,
+  so the hand's drift no longer widens the crop, tilts a gradient or moves a point's input; one
+  that sets off at an angle stays free. The first few pixels decide.
+- Select gets the whole object from one click more often. Of the shapes the model offers, it
+  prefers one with a crisp edge to a blob that spills past the object, which the model often
+  rates a hair higher. Clicking the same spot again steps to the next shape: a corgi's nose, its
+  face, the whole dog. `decodeSamClicks()` takes which shape to return and says how many there
+  are; `rankMasks()`, `maskStability()` and `isRepeatClick()` are exported.
+- Depth blurs like a lens. The background blurs without the sharp subject, which used to glow
+  into it as a pale halo. The depth map's edges snap to the photo's own (a guided filter), so the
+  blur stops at the subject's outline instead of a stepped one, fur included. Whatever is in front
+  of the focus blurs over what's behind it, so a near subject goes soft at its edges instead of
+  looking cut out. The whole subject stays sharp, not only the spot clicked, and the focus starts
+  on the middle of the photo rather than on nothing in particular. Apply renders from the
+  preview's blur, so the result matches it, and takes far less memory on large photos. New:
+  `renderBokeh()`, `composeBokehPixels()`, `renderBokehPixels()`, `focusLayers()`,
+  `guidedDepth()`, `defocus()` and `suggestFocus()`; `BokehPrep` holds the photo and its depth,
+  and the blur levels come with the focus.
+
+### Fixed
+
+- Theme overrides apply whatever order stylesheets load in. Tokens now live in the
+  `retouch-tokens` cascade layer, declared first; before, Rétouch's injected stylesheet came last
+  and won ties against a host's `.rt-root { --rt-accent: … }`. Component rules stay unlayered, so
+  host resets still can't restyle them.
+- Setting only `--rt-accent` no longer leaves terracotta-tinted washes behind.
+- Side-by-side compare showed the original larger than the edited image; both now fit the same.
+- The gallery kept neither its layout nor its scroll position when it re-rendered after an edit
+  or an added file; it keeps both now, and the selection too.
+- On phones, the AI tools menu opened behind the controls (the rail's edge fade clipped it), and
+  the Ask AI panel opened with its header, and its close button, off the top of the screen.
+- A second finger could drag the crop frame or a mask handle along with the first.
+- `@9tensor/retouch-ml` tools failed in production builds: the first run stopped with "no
+  available backend found". ONNX Runtime starts its worker from the file it lives in, and a
+  bundler had put it in the app's bundle, so the worker ran the whole app and died at its first
+  `document`. ONNX Runtime now loads on first use, through a dynamic import that bundlers split
+  into a chunk of its own, which also keeps about 400 KB out of the page's first download.
+- Dragging the Compare divider re-rendered the whole edited photo on every move, every 2D pass
+  included (Dehaze, Clarity, masks, color mix, curves). On a heavily edited photo that took
+  hundreds of milliseconds per step. The divider now repaints from the frames it keeps while
+  comparing, in well under a millisecond, and an edit made while comparing still renders in full.
+- With an aspect preset, dragging the crop frame's top or left corner moved the opposite corner
+  too, so the frame slid instead of growing. The opposite corner stays put now, and a corner sizes
+  the frame by the axis it was pulled along.
+
+## [0.1.0] — 2026-09-19
+
+Prepared but never published; 0.2.0 is its first release. It turned a crop/brightness prototype
+into a full image _and video_ editor with an on-device ML companion package.
+
+### Breaking changes since 0.0.2
+
+- **New package names.** Rétouch now publishes under the 9Tensor npm scope as `@9tensor/retouch`,
+  and the ML tools ship as `@9tensor/retouch-ml`. Update the dependency and your imports.
+- **Video is accepted by default.** `acceptedTypes` now covers images only; MP4/WebM/MOV arrive
+  through the new `acceptedVideoTypes` (default `["video/mp4", "video/webm", "video/quicktime"]`).
+  Pass `acceptedVideoTypes: []` to keep the 0.0.2 behavior.
+- **Done bakes edits into the image** (`commitMode: "bake"`, the new default): after Done, an
+  entry's `file` and pixels are the edited version and the pristine original moves to
+  `entry.original`. Set `commitMode: "keep-edits"` for the old parametric-until-export behavior.
+- **Entries are a union.** `getEditingEntry()` returns `MediaEntry | null`, the `images:add`
+  payload is `{ entries: MediaEntry[] }`, and `editor:done` carries `ImageEdits | VideoEdits`.
+  Narrow with the exported `isImageEntry` / `isVideoEntry` (or `entry.kind`).
+- `getImages()` is deprecated (it silently omits videos) — use `getMedia()`.
+- `ImageEdits` grew from three fields to the full edit model (orientation, flips, keystone, lens,
+  seam width, liquify, curves, HSL, masks, stylize, filter + strength, …). Code that constructed
+  `ImageEdits` literals by hand will need every field; `Adjustments` now has 14 keys.
+- Runtime dependencies: `fabric` (static import), `mediabunny` and `gifenc` (loaded lazily, only
+  when a video or GIF is exported). 0.0.2 had none.
+
+### Added — editor
+
+- Feature-group tabs on a left rail with a contextual control strip under the canvas; tabs are
+  registry-driven (`tools` option) and pluggable via `Retouch.registerTool` (plugin API v1).
+- **Crop** (commit-style apply, aspect presets, thirds grid) · **Transform** (rotate 90°/flip,
+  straighten with auto-crop, keystone, lens distortion + devignette, content-aware width via seam
+  carving in a worker) · **Liquify** (brush push warp) · **Adjust** (14 controls incl. exposure,
+  temperature/tint, vibrance, clarity, dehaze, white-balance eyedropper) · **Curves** (master + RGB,
+  live histogram) · **Color mix** (8-band HSL) · **Masks** (linear/radial selective adjustments) ·
+  **Stylize** (tilt-shift, duotone, posterize, pixelate, halftone) · **Filters** (11 presets with
+  intensity and live thumbnails).
+- Undo/redo history with a timeline menu; keyboard operability (Esc, ⌘/Ctrl+Enter, ⌘/Ctrl+Z/⇧Z/Y,
+  ⌘/Ctrl+K, 1–9, Enter, Space) with a focus trap and dialog ARIA.
+- Side-by-side compare view (images), hold-to-compare (video), Reset, and `restoreOriginal(id)` /
+  `replaceImageSource(id, file)` with `image:commit` / `image:restore` events.
+- Toast notifications for rejected files and export errors, with a severity icon (errors are
+  announced as alerts) and placed clear of the controls; `file:rejected` reasons
+  `type | size | duration | count | load-error`; `maxFileSize` and `maxVideoDuration` options.
+
+### Added — video
+
+- Video ingestion with poster cards and duration badges; playback transport with crop, adjust and
+  filters live on the frame; **Trim** tool with filmstrip, in/out handles, loop-in-range and
+  keyboard nudging; playback speed 0.25–4×.
+- Re-encoded MP4/WebM export through WebCodecs (mediabunny) with audio, one-tap mute, per-file
+  `export:*` progress events, an export overlay and `cancelExport()`; packet copy when nothing
+  changed; a MediaRecorder fallback for browsers without WebCodecs.
+- Frame capture into a new image entry, GIF-of-range export (forward/reverse/boomerang), deflicker,
+  and poster pick.
+
+### Added — AI
+
+- ✦ Ask AI panel (⌘K): natural-language edits mapped onto the manual tools' edit operations as
+  one undoable step, with a downscaled frame for content-aware commands. Token-gated via
+  `ai: { apiKey | baseUrl | complete | allowUserKey }`; `ai:start` / `ai:applied` / `ai:error`
+  events.
+
+### Added — gallery & API
+
+- Six gallery view modes (2/3/4 columns, width-fit, height-fit, list), an add-more drop target,
+  and a **Done** button whenever `onDone` is configured.
+- Export options (`export: { format, quality, maxDimension }`), `exportGif()`, `downloadImage()`,
+  `cancelExport()`; `refreshRangeFill` for plugin sliders.
+
+### Added — design system & theming
+
+- "Warm atelier / neutral darkroom" visual system: semantic CSS tokens per world (light shell,
+  true-neutral editor), a unified 24-grid/1.5-stroke icon set, property-scoped motion with entrance
+  keyframes and `prefers-reduced-motion`, focus rings, filled slider tracks, and a documented
+  theming contract (override tokens on `.rt-root` or the overlay roots).
+
+### Added — `@9tensor/retouch-ml` 0.1.0 (first release)
+
+Seven editor tabs, each also available as a headless function, running through ONNX Runtime Web
+(WebGPU → WASM fallback, inference in a worker, weights cached via the Cache API):
+
+- **Cutout** — MODNet background removal (any BiRefNet export via `modelUrl`)
+- **Upscale** — tiled Real-ESRGAN 4× with seam-free overlap
+- **Erase** — LaMa heal brush, composited back in place
+- **Detect** — UltraFace faces + YOLOX-nano objects (80 COCO classes) → masks, privacy pixelate,
+  crop-to-boxes
+- **Select** — SlimSAM click-to-segment with add/subtract refinement → cut out or erase object
+- **Depth** — Depth Anything V2 Small bokeh with click-to-focus and aperture
+- **Denoise** — SCUNet real-noise removal (split graph + weights sidecar via `externalDataUrl`)
+
+Default model URLs are pinned to specific upstream revisions. All default weights are MIT,
+Apache-2.0 or BSD-3 licensed — see `docs/ADVANCED-FEATURES.md` for the audit.
+
+### Fixed
+
+- A dragged crop is kept when you press Done or switch tools; it no longer needs Apply crop first.
+- The editor fits phone screens: Done stays visible at any width, the top bar and control strip
+  scroll instead of clipping their first items, and the tool rail collapses to icons.
+- Sample-accurate trim: packet copy is reserved for untouched full-range exports.
+- History no longer records no-op checkpoints ("phantom Edit steps").
+- The compare button no longer inherits the host page's colors; the compare view is discoverable.
+- ML results open in the editor with honest status text; heavy models run in a worker so the UI
+  never freezes.
+
+### Tooling
+
+- CI on every push: typecheck → lint → tests → builds → a Node smoke test that imports both built
+  packages and inspects their tarballs → demo build; GitHub Pages deploys only from a green `main`.
+- `publish.sh` releases both packages in dependency order with `pnpm publish`.
+
+## [0.0.2] — 2026-02-19
+
+Initial public release: drop zone → gallery → editor with crop,
+rotation and brightness/contrast/saturation adjustments; `onDone` export to Blobs.
+
+[0.2.0]: https://github.com/9tensorsoftware/retouch/compare/v0.0.2...v0.2.0
+[0.1.0]: https://github.com/9tensorsoftware/retouch/commit/d548ca1
+[0.0.2]: https://github.com/9tensorsoftware/retouch/releases/tag/v0.0.2

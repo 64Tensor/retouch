@@ -1,0 +1,13 @@
+packages:
+  - packages/*
+  - playground
+
+# Install scripts that don't run. fabric brings node-canvas along for use in Node, and ONNX
+# Runtime brings protobufjs; Rétouch runs in the browser, and the tests mock the canvas.
+allowBuilds:
+  canvas: false
+  protobufjs: false
+
+# Tools and test libraries are pinned exactly. The packages' own runtime dependencies keep caret
+# ranges in their package.json, so an app using Rétouch can share one copy with its own.
+saveExact: true

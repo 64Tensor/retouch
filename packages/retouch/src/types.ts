@@ -1,0 +1,557 @@
+import type { Look } from "./look";
+
+export type AppState = "idle" | "dropzone" | "gallery" | "editor" | "destroyed";
+
+export type BuiltinEditorTool =
+  | "trim"
+  | "crop"
+  | "transform"
+  | "liquify"
+  | "curves"
+  | "hsl"
+  | "masks"
+  | "stylize"
+  | "adjust"
+  | "filters"
+  | "info";
+
+/** Built-in tool ids plus any id registered via `Retouch.registerTool`. */
+export type EditorTool = BuiltinEditorTool | (string & {});
+
+export type FilterPreset =
+  | "none"
+  | "bw"
+  | "sepia"
+  | "warm"
+  | "cool"
+  | "vivid"
+  | "vintage"
+  | "kodachrome"
+  | "technicolor"
+  | "polaroid"
+  | "brownie"
+  | "invert";
+
+export type MediaKind = "image" | "video";
+
+/** Coarse rotation applied to the source before cropping, clockwise degrees. */
+export type Orientation = 0 | 90 | 180 | 270;
+
+export interface TrimRange {
+  /** Seconds from media start, >= 0. */
+  start: number;
+  /** Seconds from media start; end - start >= MIN_TRIM_DURATION. */
+  end: number;
+}
+
+export type FileRejectionReason = "type" | "size" | "duration" | "count" | "load-error";
+
+/** Prepared request handed to a custom AI transport. */
+export interface AiRequest {
+  system: string;
+  prompt: string;
+  /** Base64 JPEG of the current frame (no data: prefix), when image context is enabled. */
+  imageBase64?: string;
+  /** JSON Schema describing the expected edit-operations object. */
+  schema: Record<string, unknown>;
+}
+
+export interface AiOptions {
+  /**
+   * Anthropic API key. Browser-visible — fine for prototypes; production
+   * should proxy via `baseUrl` or `complete` instead.
+   */
+  apiKey?: string;
+  /** Model ID. Defaults to "claude-haiku-5-5". */
+  model?: string;
+  /** API origin override (e.g. your server-side proxy). */
+  baseUrl?: string;
+  /** Attach a downscaled frame so content-aware commands work. Defaults to true. */
+  sendImage?: boolean;
+  /** Show an "Add API key" popover storing the end user's key in localStorage. */
+  allowUserKey?: boolean;
+  /** Custom transport replacing the built-in Anthropic call. Must resolve to the raw edit-operations object. */
+  complete?: (request: AiRequest) => Promise<unknown>;
+}
+
+/** Validated, clamped edit operations produced by the AI command bar. */
+export interface AiEditOps {
+  crop?: CropRect;
+  aspect?: AspectRatioPreset;
+  rotation?: number;
+  /** Vertical keystone correction, -100 to 100. */
+  keystoneV?: number;
+  /** Horizontal keystone correction, -100 to 100. */
+  keystoneH?: number;
+  /** Radial lens distortion correction, -100 to 100. */
+  lensDistortion?: number;
+  /** Corner brightness recovery, 0 to 100. */
+  lensDevignette?: number;
+  /** Content-aware width (seam carving), 50 to 100 percent. Images only. */
+  seamWidth?: number;
+  /** Absolute target orientation. */
+  orientation?: Orientation;
+  /** Toggle: mirror the displayed image horizontally. */
+  flipH?: boolean;
+  /** Toggle: mirror the displayed image vertically. */
+  flipV?: boolean;
+  adjustments?: Partial<Adjustments>;
+  /** Per-band HSL shifts; only include bands you change. */
+  hsl?: Partial<Record<HslBand, Partial<HslShift>>>;
+  /** Stylize effect (kind + strength). */
+  stylize?: { kind: StylizeKind; amount?: number };
+  filter?: FilterPreset;
+  filterStrength?: number;
+  trim?: TrimRange;
+  mute?: boolean;
+  speed?: number;
+  reset?: boolean;
+  explanation: string;
+}
+
+/** The editor's tool rail layout (see `RetouchOptions.rail`). */
+export interface RailOptions {
+  /**
+   * AI tools on the rail itself, by id; the rest wait in the AI tools menu.
+   * Defaults to the first three registered.
+   */
+  pinned?: EditorTool[];
+  /** Show tool names beside the icons. Defaults to false. */
+  expanded?: boolean;
+}
+
+/** Options for `Retouch.openEditor()`. */
+export interface OpenEditorOptions {
+  /**
+   * The tool to open on, such as "adjust" or a plugin's id. Defaults to the
+   * first tool on the rail, and so does a tool the editor doesn't offer.
+   */
+  tool?: EditorTool;
+  /**
+   * Settings to start from, laid over the entry's own: the sliders, curve
+   * channels and color bands named replace theirs. They arrive as one step,
+   * so Undo takes them back and Cancel leaves the entry as it was.
+   */
+  look?: Look;
+}
+
+/**
+ * Gallery layouts: "rows" (justified, at true aspect ratios; the default),
+ * "grid" (square crops), "height-fit" (a filmstrip of tall frames) and
+ * "list". The 0.1 layouts still resolve: "cols-2", "cols-3" and "cols-4"
+ * open the grid, "width-fit" the rows.
+ */
+export type GalleryViewMode =
+  | "rows"
+  | "grid"
+  | "height-fit"
+  | "list"
+  | "cols-2"
+  | "cols-3"
+  | "cols-4"
+  | "width-fit";
+
+export type AspectRatioPreset = "free" | "16:9" | "4:3" | "1:1" | "3:2" | "9:16";
+
+export interface ImageExportOptions {
+  /**
+   * Output format. Defaults to "png" for `exportAll`/`done()`; a download
+   * defaults to the photo's own format. AVIF only where the browser writes it.
+   */
+  format?: "png" | "jpeg" | "webp" | "avif";
+  /** Quality 0–1 for lossy formats (jpeg/webp/avif). Defaults to 0.92. */
+  quality?: number;
+  /** Cap the exported image's long edge in pixels. No cap by default. */
+  maxDimension?: number;
+}
+
+/**
+ * Color scheme for the drop zone and gallery. The editor, export progress
+ * and toasts are always dark so the chrome never color-casts the image.
+ */
+export type ShellTheme = "light" | "dark" | "auto";
+
+export interface RetouchOptions {
+  /** Target DOM element or CSS selector to mount into. */
+  target: string | HTMLElement;
+  /**
+   * Drop zone and gallery color scheme: "light" (default), "dark", or
+   * "auto" to follow the OS setting. Switch later with `setTheme()`.
+   */
+  theme?: ShellTheme;
+  /** Maximum number of files. Defaults to Infinity. */
+  maxFiles?: number;
+  /** Accepted image MIME types. Defaults to common image types. */
+  acceptedTypes?: string[];
+  /** Accepted video MIME types. Pass [] to disable video. */
+  acceptedVideoTypes?: string[];
+  /**
+   * What Done does to an image's edits. "bake" (default) renders them into
+   * the pixels and stashes the pristine original for Reset; "keep-edits"
+   * leaves them non-destructive until export.
+   */
+  commitMode?: "bake" | "keep-edits";
+  /** Maximum file size in bytes for any media. Defaults to Infinity. */
+  maxFileSize?: number;
+  /** Maximum video duration in seconds. Defaults to Infinity. */
+  maxVideoDuration?: number;
+  /** Enables the AI command bar in the editor when configured. */
+  ai?: AiOptions;
+  /**
+   * Editor feature groups to mount, in tab order. Filters both built-in
+   * tools and tools registered via `Retouch.registerTool`; omit for all.
+   */
+  tools?: EditorTool[];
+  /**
+   * The tool rail's starting layout. People can pin AI tools and show
+   * names themselves; their choices are remembered in this browser and
+   * win over these defaults.
+   */
+  rail?: RailOptions;
+  /** Image export format/quality/sizing. Videos always export as MP4/WebM. */
+  export?: ImageExportOptions;
+  /** Called with every entry exported — from the gallery's Done button or a host `done()` call. */
+  onDone?: (blobs: Blob[]) => void;
+}
+
+export interface CropRect {
+  /** Normalized left (0–1). */
+  x: number;
+  /** Normalized top (0–1). */
+  y: number;
+  /** Normalized width (0–1). */
+  width: number;
+  /** Normalized height (0–1). */
+  height: number;
+}
+
+/**
+ * A shaped crop: an outline over the cropped frame, with what's outside it
+ * (or, inverted, inside it) turned transparent. Each shape cuts what the
+ * ones before it left, so an outline drawn inside a circle keeps only what
+ * both hold. Images only.
+ */
+export interface CropShape {
+  /** The closed outline, as x, y pairs normalized over the cropped frame (0–1). */
+  points: number[];
+  /** Curve through the points, as a hand-drawn line does, rather than joining them straight. */
+  smooth?: boolean;
+  /** Soft edge, 0–100: the kept side fades in from the outline over up to a quarter of the shape's short side. */
+  feather: number;
+  /** Keep what's outside the outline instead, punching the shape out. */
+  invert: boolean;
+}
+
+export interface Adjustments {
+  /** 0–200, default 100. */
+  brightness: number;
+  /** 0–200, default 100. */
+  contrast: number;
+  /** 0–200, default 100. */
+  saturation: number;
+  /** -100–100 (≈ ±2 EV), default 0. */
+  exposure: number;
+  /** -100 (cool) – 100 (warm), default 0. */
+  temperature: number;
+  /** -100 (green) – 100 (magenta), default 0. */
+  tint: number;
+  /** Hue rotation in degrees, -180–180, default 0. */
+  hue: number;
+  /** -100–100, default 0. Boosts muted colors more than saturated ones. */
+  vibrance: number;
+  /** 0–100, default 0. */
+  sharpen: number;
+  /** 0–100, default 0. */
+  blur: number;
+  /** Film grain, 0–100, default 0. */
+  grain: number;
+  /** Edge darkening, 0–100, default 0. */
+  vignette: number;
+  /** Midtone local contrast, -100–100, default 0. */
+  clarity: number;
+  /** Haze removal, 0–100, default 0. */
+  dehaze: number;
+}
+
+export type HslBand =
+  | "red"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "aqua"
+  | "blue"
+  | "purple"
+  | "magenta";
+
+/** Per-band shifts, each -100..100 (0 = neutral). */
+export interface HslShift {
+  h: number;
+  s: number;
+  l: number;
+}
+
+/** Lightroom-style HSL mixer: independent shifts for eight hue bands. */
+export type HslMixer = Record<HslBand, HslShift>;
+
+export type StylizeKind = "none" | "tiltshift" | "duotone" | "posterize" | "pixelate" | "halftone";
+
+/** One parametric stylize effect (only one active at a time). */
+export interface StylizeEffect {
+  kind: StylizeKind;
+  /** Primary strength/size, 0–100. */
+  amount: number;
+  /** Tilt-shift: vertical center of the sharp band, 0–1. */
+  position: number;
+  /** Duotone shadow color (hex). */
+  shadow: string;
+  /** Duotone highlight color (hex). */
+  highlight: string;
+}
+
+export type MaskKind = "linear" | "radial";
+
+/** Local adjustment deltas inside a mask, each -100..100 (0 = neutral). */
+export interface LocalAdjust {
+  exposure: number;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  temperature: number;
+  tint: number;
+}
+
+/**
+ * A selective-adjustment mask. Geometry is normalized over the visible
+ * (cropped/warped) frame: linear masks fade from full effect at (x0,y0) to
+ * none at (x1,y1); radial masks are ellipses centered at (x0,y0) with radii
+ * |x1−x0| × |y1−y0| and a feathered edge.
+ */
+export interface EditMask {
+  id: string;
+  kind: MaskKind;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** Apply outside the shape instead of inside. */
+  invert: boolean;
+  adjust: LocalAdjust;
+}
+
+/**
+ * Liquify displacement field: a coarse row-major grid of per-node offsets,
+ * each a fraction of the visible frame's width/height. Rendering bilinearly
+ * interpolates between nodes and backward-maps each output pixel.
+ */
+export interface WarpField {
+  cols: number;
+  rows: number;
+  dx: number[];
+  dy: number[];
+}
+
+/** One tone-curve control point, both axes normalized 0–1. */
+export interface CurvePoint {
+  x: number;
+  y: number;
+}
+
+/** Tone curves: a master curve plus per-channel curves (identity = 2 corner points). */
+export interface Curves {
+  master: CurvePoint[];
+  r: CurvePoint[];
+  g: CurvePoint[];
+  b: CurvePoint[];
+}
+
+/** A piece of a file's metadata that can be changed. */
+export type MetadataKey =
+  | "fileName"
+  | "make"
+  | "model"
+  | "lens"
+  | "serial"
+  | "owner"
+  | "software"
+  | "taken"
+  | "shutter"
+  | "aperture"
+  | "iso"
+  | "focal"
+  | "focal35"
+  | "bias"
+  | "coordinates"
+  | "altitude"
+  | "facing"
+  | "title"
+  | "caption"
+  | "keywords"
+  | "creator"
+  | "copyright"
+  | "license"
+  | "source"
+  | "rating"
+  | "city"
+  | "state"
+  | "country";
+
+/** Each changed field's new value; "" clears it. A field left out stays as the file has it. */
+export type MetadataEdits = Partial<Record<MetadataKey, string>>;
+
+export interface ImageEdits {
+  /** Normalized over the oriented (rotated/flipped) source. */
+  crop: CropRect;
+  /** Shapes cut from the cropped frame, in order; empty for a plain rectangle. Images only. */
+  cropShapes: CropShape[];
+  /** Fine straighten angle in degrees, -45 to 45, applied after crop. */
+  rotation: number;
+  /** Vertical keystone (perspective) correction, -100 to 100. */
+  keystoneV: number;
+  /** Horizontal keystone (perspective) correction, -100 to 100. */
+  keystoneH: number;
+  /** Radial lens distortion correction, -100 (pinch) to 100 (bulge). */
+  lensDistortion: number;
+  /** Corner brightness recovery (devignette), 0 to 100. */
+  lensDevignette: number;
+  /** Content-aware width (seam carving), 50–100 percent of the original. Images only. */
+  seamWidth: number;
+  /** Brush-painted liquify field, or null when untouched. */
+  liquify: WarpField | null;
+  /** 90°-step rotation applied to the source before cropping. */
+  orientation: Orientation;
+  /** Mirror the source horizontally (before orientation). */
+  flipH: boolean;
+  /** Mirror the source vertically (before orientation). */
+  flipV: boolean;
+  adjustments: Adjustments;
+  /** Tone curves applied after adjustments/filters (identity by default). */
+  curves: Curves;
+  /** Per-hue-band color mixer, applied before the curves. */
+  hsl: HslMixer;
+  /** Selective-adjustment masks, applied before the global color passes. */
+  masks: EditMask[];
+  /** Stylize effect, applied after color work (before the vignette). */
+  stylize: StylizeEffect;
+  /** Preset filter applied beneath the adjustments. */
+  filter: FilterPreset;
+  /** Preset intensity, 0–100. */
+  filterStrength: number;
+  /** Changes to the file's metadata, written into exports. Images, bar the file name. */
+  metadata?: MetadataEdits;
+}
+
+export interface VideoEdits extends ImageEdits {
+  trim: TrimRange;
+  mute: boolean;
+  /** Playback rate, 0.25–4. Audio is dropped on export when ≠ 1. */
+  speed: number;
+  /** Smooth frame-to-frame brightness flicker on export. */
+  deflicker: boolean;
+}
+
+interface MediaEntryBase {
+  id: string;
+  file: File;
+  /** Object URL for the gallery thumbnail (video: a captured poster frame). */
+  thumbnailUrl: string;
+  edited: boolean;
+}
+
+export interface ImageEntry extends MediaEntryBase {
+  kind: "image";
+  image: HTMLImageElement;
+  edits: ImageEdits;
+  /**
+   * The pristine source, stashed the first time the entry's pixels are
+   * replaced (Done-commit or a destructive ML tool). Reset restores it.
+   */
+  original?: { file: File; image: HTMLImageElement };
+}
+
+export interface VideoEntry extends MediaEntryBase {
+  kind: "video";
+  /** Detached element; never appended to the DOM. */
+  video: HTMLVideoElement;
+  /** Object URL backing video.src — revoked separately from thumbnailUrl. */
+  videoUrl: string;
+  /** Seconds. */
+  duration: number;
+  width: number;
+  height: number;
+  edits: VideoEdits;
+  /** Set when the user picked an explicit poster frame (auto-refresh keeps it). */
+  posterPicked?: boolean;
+}
+
+export type MediaEntry = ImageEntry | VideoEntry;
+
+export interface RetouchEventMap {
+  "state:change": { from: AppState; to: AppState };
+  "images:add": { entries: MediaEntry[] };
+  "images:remove": { id: string };
+  "editor:open": { id: string };
+  "editor:done": { id: string; edits: ImageEdits | VideoEdits };
+  /** Edits were baked into the image's pixels after Done. */
+  "image:commit": { id: string };
+  /** The pristine original was restored over a committed image. */
+  "image:restore": { id: string };
+  "editor:cancel": { id: string };
+  "file:rejected": { file: File; reason: FileRejectionReason };
+  "frame:capture": { sourceId: string; entry: ImageEntry };
+  "ai:start": { id: string; prompt: string };
+  "ai:applied": { id: string; ops: AiEditOps; explanation: string };
+  "ai:error": { id: string; error: Error };
+  "export:start": { id: string; kind: MediaKind };
+  "export:progress": { id: string; progress: number };
+  "export:complete": { id: string; blob: Blob };
+  "export:error": { id: string; error: Error };
+  done: { blobs: Blob[] };
+}
+
+export interface ViewHandle {
+  root: HTMLElement;
+  /** Remove the view; with `fade`, it fades out first where it can. */
+  destroy(options?: { fade?: boolean }): void;
+}
+
+/** What one set of edits did to the frame of the pixels it worked on. */
+export interface Framing {
+  width: number;
+  height: number;
+  crop: CropRect;
+  rotation: number;
+  keystoneV: number;
+  keystoneH: number;
+  lensDistortion: number;
+  orientation: Orientation;
+  flipH: boolean;
+  flipV: boolean;
+}
+
+/** An image's pixels at one point of an editing session. */
+export interface PhotoState {
+  file: File;
+  image: HTMLImageElement;
+  original?: { file: File; image: HTMLImageElement };
+  /** The original no longer lines up with these pixels (a baked crop or turn). */
+  reframed: boolean;
+  /** How each bake framed the pixels before it, oldest first. */
+  framings: Framing[];
+}
+
+/** One undo step in the editor. */
+export interface EditorStep {
+  edits: ImageEdits | VideoEdits;
+  /** Images: the pixels the step was taken on. */
+  photo?: PhotoState;
+  /** What the step did when its edits don't say (a tool replaced the pixels). */
+  label?: string;
+  /** Tools' own state kept in the history (`ctx.undoable`), by tool id. */
+  tools?: Record<string, unknown>;
+}
+
+/** The editor's undo stack, carried across the remount a pixel change causes. */
+export interface EditorHistory {
+  steps: EditorStep[];
+  cursor: number;
+}

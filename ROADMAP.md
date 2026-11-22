@@ -1,0 +1,118 @@
+# Rétouch Roadmap
+
+Feature catalog and build order. Priorities: **P1** = next, **P2** = soon, **P3** = later.
+Status: ✅ shipped · 🚧 in progress · ⬜ planned.
+
+Release history lives in [CHANGELOG.md](../CHANGELOG.md); the research and
+license audit behind the ML and advanced-feature rows is in
+[ADVANCED-FEATURES.md](ADVANCED-FEATURES.md).
+
+## A. Usability & editor polish
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | Undo/redo history (Cmd/Ctrl+Z / ⇧Z / Y) over the edits object |
+| ✅ | — | Keyboard: Esc=cancel, Cmd/Ctrl+Enter=done, Cmd/Ctrl+K=AI, letter + 1–9 tool hotkeys, I=AI tools menu, +/−/0 zoom, Enter=apply crop (and a question before leaving Crop with a frame that wasn't applied), Space=play, arrow-nudge trim handles |
+| ✅ | — | Focus trap + `role="dialog"` + ARIA in editor; full keyboard operability; `:focus-visible` rings |
+| ✅ | — | Error feedback: toast on rejected files (type/size/duration/count) + `file:rejected` event |
+| ✅ | — | Side-by-side compare view (images) · hold-to-compare (video) · Reset-all |
+| ✅ | — | Done commits edits into the image (`commitMode: "bake"`), pristine original kept for Reset / `restoreOriginal()` |
+| ✅ | — | EXIF orientation (handled by the browser's default `image-orientation: from-image`) |
+| ✅ | — | Filter intensity slider (0–100% preset blend) |
+| ✅ | — | 14 adjustments: brightness, contrast, saturation, exposure, temperature, tint, hue, vibrance, sharpen, blur, grain, vignette, clarity, dehaze |
+| ✅ | — | Rotate 90° + flip H/V buttons (crop-tracking transforms) |
+| ✅ | — | Curves editor with live histogram · per-color HSL mixer · white-balance eyedropper |
+| ✅ | — | Design system: semantic tokens, neutral darkroom editor, unified icon set, motion + reduced-motion, filled slider tracks |
+| ✅ | — | Editor frame: grouped tool rail with an AI tools menu, right-hand inspector with a live RGB histogram, floating panels |
+| ✅ | — | Zoom & pan canvas (Cmd/Ctrl+wheel and trackpad pinch, wheel/Space/middle-drag pan, fit/1:1, sharp re-render up to the preview's resolution) |
+| ✅ | — | Controls v2: typed slider values, changed dots, semantic tracks; Adjust in sections, full-width Curves, Color mix swatches, preview tiles (Filters, Stylize, plugin looks), crop aspect tiles + straighten ruler, masks list, brush ring, before/after divider |
+| ✅ | — | AI surfaces: one model strip in every tool (Download with its size, progress and time left, Ready, details behind an info button), a run's status on one line, result wipe; Ask AI change cards with Undo and suggestions; ML panes on the plugin UI kit |
+| ✅ | — | Phones and tablets: bottom-sheet inspector, swipeable tool row, pinch-zoom and two-finger pan, 44 px touch targets, safe areas |
+| ✅ | — | Motion: the photo morphs between gallery and editor (view transitions), panel entrances, toasts that glide; all off under reduced motion |
+| ⬜ | P3 | Highlights/shadows recovery · custom LUT import · auto-enhance |
+| ⬜ | P3 | Straighten-with-grid overlay · loading skeletons · pixel-size readout on crop |
+
+## B. Editor tools
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | Crop (aspect presets, rule-of-thirds grid, commit-style apply) |
+| ✅ | — | Transform (rotate/flip, straighten with auto-crop, keystone, lens distortion + devignette, content-aware width) |
+| ✅ | — | Liquify (brush push warp, image + video) |
+| ✅ | — | Adjust (14 controls) · Curves · Color mix (8-band HSL) · Masks (linear/radial) · Stylize (tilt-shift, duotone, posterize, pixelate, halftone) · Filters (11 presets + Original) |
+| ✅ | — | Trim (video: filmstrip, in/out handles, loop-in-range, speed 0.25–4×) |
+| ⬜ | P2 | Draw tool (brush: size/color/opacity, eraser) |
+| ⬜ | P2 | Text tool (font/size/color/align, drag/scale/rotate) |
+| ⬜ | P2 | Sticker/shapes tool (built-in set + custom images) |
+| ⬜ | P2 | Object layer for the above: select/move/delete/z-order, serialization into edits, export compositing |
+
+## C. Gallery & workflow
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | Contact-sheet gallery: justified rows at true aspect ratios, grid, filmstrip and list, remembered per browser · add-more drop target · Done button when `onDone` is set |
+| ✅ | — | Drop zone with Choose files and Paste (⌘/Ctrl+V anywhere on the page) |
+| ✅ | — | Revert to original (`restoreOriginal()`, editor Reset) · size/duration in list view |
+| ✅ | — | Multi-select (⌘/Ctrl-click, Shift, ⌘/Ctrl+A) to download or remove together · Undo after removing · export sheet with per-file progress |
+| ⬜ | P2 | Copy/paste edits between items · "apply to all" |
+| ⬜ | P3 | Drag to reorder · inline rename · full metadata · sort/filter by edited |
+
+## D. API / integration / theming
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | `maxFileSize` / `maxFiles` / `maxVideoDuration` enforcement with `file:rejected` reasons |
+| ✅ | — | Export lifecycle events (`export:start/progress/complete/error`) + `cancelExport()` + progress overlay |
+| ✅ | — | `tools` option — feature-group tabs are registry-driven |
+| ✅ | — | Export options: format png/jpeg/webp, quality, max dimension (`export` option) |
+| ✅ | — | Theming: tokens in a cascade layer so host overrides always win, one-variable brand color, `theme: "light" \| "dark" \| "auto"` for the shell ([THEMING.md](THEMING.md)) |
+| ✅ | — | Plugin UI kit: `ctx.ui` controls, `ctx.preview` tiles, `ctx.reveal` result wipes, AI model strips and run status ([PLUGINS.md](PLUGINS.md)) |
+| ✅ | — | README truth pass (docs match the real API) · CHANGELOG · CI (typecheck/lint/test/build/smoke) · release script for both packages |
+| ⬜ | P2 | URL import |
+| ⬜ | P2 | `getEdits()/setEdits()` JSON round-trip for host persistence |
+| ⬜ | P3 | i18n strings option · React wrapper · Vue/Svelte wrappers |
+
+## E. Video editing
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | Accept video files · poster cards with duration badge · media model (`ImageEntry \| VideoEntry`) |
+| ✅ | — | Editor playback transport · crop/adjust/filters live on video |
+| ✅ | — | Trim tool with filmstrip, in/out handles, loop-in-range |
+| ✅ | — | Frame capture → image entry (carries the video's visual edits) |
+| ✅ | — | Re-encoded MP4/WebM export (mediabunny/WebCodecs), audio + mute, progress + cancel; packet copy when nothing changed |
+| ✅ | — | MediaRecorder fallback · export progress overlay · video on by default |
+| ✅ | — | Playback speed 0.25–4× (preview + retimed export; audio dropped at non-1×) |
+| ✅ | — | GIF-of-range export (forward/reverse/boomerang) · deflicker · poster pick |
+| ⬜ | P3 | Audio gain/fade · pitch-preserving speed audio · full mp4 reverse |
+| ⬜ | P3 | Researched (CapCut baseline, need multi-clip/object layers): transitions · text & auto-captions · keyframe animation · speed curves · stabilization · chroma key |
+
+## F. AI
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | AI panel (⌘K): natural-language edits via VLM over the full edit surface (token-gated, Anthropic by default, `baseUrl`/`complete` for proxies, `allowUserKey`) |
+| ⬜ | P3 | AI auto-enhance suggestions · smart-crop refinements · alt-text generation on export |
+
+## G. On-device ML (`@64tensor/retouch-ml`)
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | M1 Cutout — MODNet background removal (any BiRefNet export via `modelUrl`) |
+| ✅ | — | M2 Upscale — tiled Real-ESRGAN 4× |
+| ✅ | — | M3 Erase — LaMa heal brush, in place |
+| ✅ | — | M4 Detect — UltraFace faces + YOLOX-nano objects → masks, privacy pixelate, crop-to-boxes |
+| ✅ | — | M5 Select — SlimSAM click-to-segment → cut out / erase object |
+| ✅ | — | M6 Depth — Depth Anything V2 Small bokeh, click-to-focus + aperture |
+| ✅ | — | M7 Denoise — SCUNet real-noise removal |
+| ✅ | — | Runtime: WebGPU → WASM fallback, worker inference, Cache API weights, revision-pinned default URLs |
+| ⬜ | P1 | M8 Face restoration — model undecided (GFPGAN is no longer cleared; RestoreFormer++ pending a decision on FFHQ's terms), UltraFace crop + paste-back |
+| ⬜ | P3 | Colorize (DDColor — licensed tiny exports exist now; waiting on a decision about ImageNet's terms) · video matting (MODNet per frame) · face-aware retouch (Face Mesh) · open-vocab detection (OWL-ViT) |
+
+## H. Ambitious / later
+
+| Status | P | Feature |
+|--------|---|---------|
+| ✅ | — | Plugin API v1: `Retouch.registerTool` feature groups over the shared edit model (demo: "Looks"; `@64tensor/retouch-ml` is built on it) |
+| ⬜ | P3 | Plugin API v2: custom render passes + `registerFilter` (needed for Draw/Text/Sticker as plugins) |
+| ⬜ | P3 | Collage canvas · batch watermark |

@@ -1,0 +1,217 @@
+/**
+ * The shared icon set. One drawing grammar everywhere: a 24×24 grid,
+ * currentColor strokes at 1.5 with round caps and joins. Solid shapes
+ * (media glyphs, view-mode pictograms) opt into fills per element — filled
+ * paths keep the inherited stroke so their corners round like everything
+ * else. Icons are sized by the stylesheet (`svg { width; height }` on the
+ * host) and colored by the host's `color`.
+ */
+const icon = (art: string): string =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${art}</svg>`;
+
+/** Parse an icon string into a detached element, for `h()`-built trees. */
+export function iconElement(markup: string): SVGElement {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = markup;
+  return tpl.content.firstElementChild as unknown as SVGElement;
+}
+
+// ── Tool tabs ────────────────────────────────────────────────────────────
+
+export const ICON_TOOL_TRIM = icon(
+  '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 8L21 19M8.5 16L21 5"/>',
+);
+export const ICON_TOOL_CROP = icon(
+  '<path d="M6 2v14a2 2 0 002 2h14"/><path d="M2 6h14a2 2 0 012 2v14"/>',
+);
+export const ICON_TOOL_TRANSFORM = icon(
+  '<path d="M3 9V5a2 2 0 012-2h4M21 15v4a2 2 0 01-2 2h-4M3 15v4a2 2 0 002 2h4M21 9V5a2 2 0 00-2-2h-4"/><path d="M9 15l6-6"/>',
+);
+/** A grid bulging from its center: the warp Liquify makes. */
+export const ICON_TOOL_LIQUIFY = icon(
+  '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9c4 0 6-2 9-2s5 2 9 2M3 15c4 0 6 2 9 2s5-2 9-2M9 3c0 4-2 6-2 9s2 5 2 9M15 3c0 4 2 6 2 9s-2 5-2 9"/>',
+);
+export const ICON_TOOL_CURVES = icon(
+  '<path d="M3 21C10 21 14 3 21 3"/><circle cx="8.2" cy="14.8" r="1.6" fill="currentColor" stroke="none"/><circle cx="15.8" cy="6.4" r="1.6" fill="currentColor" stroke="none"/>',
+);
+export const ICON_TOOL_HSL = icon(
+  '<circle cx="12" cy="12" r="9"/><path d="M12 3v9M12 12l7.8 4.5M12 12l-7.8 4.5"/>',
+);
+export const ICON_TOOL_MASKS = icon(
+  '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none" opacity="0.55"/>',
+);
+export const ICON_TOOL_STYLIZE = icon(
+  '<path d="M15 4V2M15 10V8M11 6h2M19 6h2M17.5 7.5L21 11l-9.5 9.5a1.77 1.77 0 01-2.5-2.5L18.5 8.5z"/>',
+);
+export const ICON_TOOL_ADJUST = icon(
+  '<circle cx="12.5" cy="5" r="2.5"/><circle cx="8" cy="12" r="2.5"/><circle cx="16.5" cy="19" r="2.5"/><path d="M4 5h4.5M16.5 5H20M12 12h8M4 19h8.5"/>',
+);
+export const ICON_TOOL_FILTERS = icon(
+  '<circle cx="9" cy="9" r="6"/><circle cx="15" cy="15" r="6"/>',
+);
+export const ICON_TOOL_INFO = icon(
+  '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.75" r="0.6" fill="currentColor"/>',
+);
+export const ICON_TOOL_FALLBACK = icon(
+  '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 12h6"/>',
+);
+
+// ── Editor chrome ────────────────────────────────────────────────────────
+
+export const ICON_UNDO = icon('<path d="M9 7L4 12l5 5M4 12h11a5 5 0 010 10h-1"/>');
+export const ICON_REDO = icon('<path d="M15 7l5 5-5 5M20 12H9a5 5 0 000 10h1"/>');
+export const ICON_EYE = icon(
+  '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+);
+export const ICON_COMPARE_DIVIDER = icon(
+  '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M12 3v18"/>',
+);
+export const ICON_COMPARE_SIDE = icon(
+  '<rect x="3" y="6" width="8" height="12" rx="1.5"/><rect x="13" y="6" width="8" height="12" rx="1.5"/>',
+);
+export const ICON_HISTORY = icon(
+  '<path d="M3.5 12a8.5 8.5 0 108.5-8.5A8.8 8.8 0 005.6 6.1L3.5 8.2"/><path d="M3.5 3.5v4.7h4.7"/><path d="M12 7.5V12l3.2 1.9"/>',
+);
+export const ICON_CAMERA = icon(
+  '<path d="M3 8a2 2 0 012-2h2l1.5-2h7L17 6h2a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/><circle cx="12" cy="13" r="3.5"/>',
+);
+export const ICON_CHECK = icon('<path d="M4.5 12.5l5 5L19.5 6.5"/>');
+export const ICON_POSTER = icon(
+  '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 5 5 4-4 4 4"/><circle cx="9" cy="9" r="1.4" fill="currentColor" stroke="none"/>',
+);
+
+// ── Transform operations ─────────────────────────────────────────────────
+
+/** A frame with a quarter-turn arrow over it, one per direction. */
+export const ICON_ROTATE_CCW = icon(
+  '<rect x="9" y="10" width="11" height="11" rx="1.5"/><path d="M4 13V9a5 5 0 015-5h3M2 11l2 2 2-2"/>',
+);
+export const ICON_ROTATE_CW = icon(
+  '<rect x="4" y="10" width="11" height="11" rx="1.5"/><path d="M20 13V9a5 5 0 00-5-5h-3M18 11l2 2 2-2"/>',
+);
+export const ICON_FLIP_H = icon('<path d="M12 2v20M8 7H4v10h4zM16 7h4v10h-4z"/>');
+export const ICON_FLIP_V = icon('<path d="M2 12h20M7 8V4h10v4zM7 16v4h10v-4z"/>');
+
+// Crop shapes
+export const ICON_SHAPE_RECT = icon('<rect x="4" y="5.5" width="16" height="13" rx="1"/>');
+export const ICON_SHAPE_ELLIPSE = icon('<ellipse cx="12" cy="12" rx="9" ry="6.5"/>');
+export const ICON_SHAPE_CIRCLE = icon('<circle cx="12" cy="12" r="8"/>');
+export const ICON_SHAPE_STAR = icon(
+  '<path d="M12 3.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.5L12 17l-5.6 3.7 1.8-6.5L3 10.1l6.6-.3z"/>',
+);
+export const ICON_SHAPE_HEART = icon(
+  '<path d="M12 19.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0112 6.9a4.2 4.2 0 017.5 2.4c0 5.6-7.5 10.2-7.5 10.2z"/>',
+);
+export const ICON_SHAPE_HEXAGON = icon('<path d="M12 3.5l7.4 4.25v8.5L12 20.5l-7.4-4.25v-8.5z"/>');
+export const ICON_SHAPE_TRIANGLE = icon('<path d="M12 4.5l8.5 15h-17z"/>');
+export const ICON_SHAPE_LASSO = icon(
+  '<path d="M12 4.5c4.7 0 8.5 2.3 8.5 5.3s-3.8 5.2-8.5 5.2-8.5-2.3-8.5-5.2 3.8-5.3 8.5-5.3z"/><path d="M6.5 13.8c-1.2 1.6-.6 3.7 1.4 3.9 1.6.2 2 1.6 1.1 2.8"/>',
+);
+export const ICON_SHAPE_POLYGON = icon(
+  '<path d="M5 17.5L4 7.5l8-3.5 8 5.5-3 9z"/><circle cx="5" cy="17.5" r="1.4"/><circle cx="4" cy="7.5" r="1.4"/><circle cx="12" cy="4" r="1.4"/><circle cx="20" cy="9.5" r="1.4"/><circle cx="17" cy="18.5" r="1.4"/>',
+);
+export const ICON_EYEDROPPER = icon(
+  '<path d="M13.6 4.4l6 6M15.5 8.5L6.2 17.8a2 2 0 01-.9.5l-2.8.7.7-2.8a2 2 0 01.5-.9l9.3-9.3a2.1 2.1 0 013 3z"/>',
+);
+
+// ── Video transport ──────────────────────────────────────────────────────
+
+export const ICON_PLAY = icon('<path d="M9 6.2v11.6L18.8 12z" fill="currentColor"/>');
+export const ICON_PAUSE = icon(
+  '<rect x="6.5" y="5.5" width="3.6" height="13" rx="1.3" fill="currentColor" stroke="none"/><rect x="13.9" y="5.5" width="3.6" height="13" rx="1.3" fill="currentColor" stroke="none"/>',
+);
+export const ICON_SOUND = icon(
+  '<path d="M5 9.5v5h3l4.5 3.8V5.7L8 9.5H5z" fill="currentColor"/><path d="M15.5 9.5a3.6 3.6 0 010 5"/><path d="M18 7.2a7 7 0 010 9.6"/>',
+);
+export const ICON_MUTED = icon(
+  '<path d="M5 9.5v5h3l4.5 3.8V5.7L8 9.5H5z" fill="currentColor"/><path d="M16 10l5 4M21 10l-5 4"/>',
+);
+
+// ── AI chat ──────────────────────────────────────────────────────────────
+
+export const ICON_SPARKLE = icon(
+  '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="currentColor"/><path d="M19 15l.9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9z" fill="currentColor" stroke="none"/>',
+);
+export const ICON_SEND = icon('<path d="M12 19V5"/><path d="M5.5 11.5L12 5l6.5 6.5"/>');
+export const ICON_CLOSE = icon('<path d="M6 6l12 12M18 6L6 18"/>');
+export const ICON_PLUS = icon('<path d="M12 6v12M6 12h12"/>');
+export const ICON_MINUS = icon('<path d="M6 12h12"/>');
+export const ICON_CROSSHAIR = icon(
+  '<circle cx="12" cy="12" r="6"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/>',
+);
+export const ICON_LOCK = icon(
+  '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+);
+export const ICON_UNLOCK = icon(
+  '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
+);
+export const ICON_CHEVRON_DOWN = icon('<path d="M6 9l6 6 6-6"/>');
+/** Pin a tool to the rail: a pushpin. */
+export const ICON_PIN = icon('<path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"/><path d="M12 14v6"/>');
+/** The rail's names toggle: a sidebar, opening or closing. */
+export const ICON_RAIL_EXPAND = icon(
+  '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15M13 10l2.5 2-2.5 2"/>',
+);
+export const ICON_RAIL_COLLAPSE = icon(
+  '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15M15.5 10L13 12l2.5 2"/>',
+);
+export const ICON_RESET = icon('<path d="M4 4v6h6"/><path d="M5.6 15A8 8 0 1 0 6.3 6.3L4 10"/>');
+export const ICON_TRASH = icon(
+  '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2"/>',
+);
+/** Mask kinds: a linear gradient band, and a radial ellipse. */
+export const ICON_MASK_LINEAR = icon(
+  '<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16" stroke-dasharray="2 2.5"/><path d="M4 14.5h16"/>',
+);
+export const ICON_MASK_RADIAL = icon(
+  '<ellipse cx="12" cy="12" rx="8" ry="6.5"/><ellipse cx="12" cy="12" rx="3.5" ry="2.5" stroke-dasharray="2 2"/>',
+);
+/** Invert a mask: the shape and its outside swap. */
+export const ICON_INVERT = icon(
+  '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
+);
+export const ICON_ALERT = icon(
+  '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
+);
+export const ICON_INFO = icon('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.01"/>');
+
+// ── Gallery ──────────────────────────────────────────────────────────────
+
+export const ICON_UPLOAD = icon(
+  '<path d="M4 14.899A7 7 0 1115.71 8h1.79a4.5 4.5 0 012.5 8.242"/><path d="M12 12v9m0-9l-3 3m3-3 3 3"/>',
+);
+export const ICON_DOWNLOAD = icon(
+  '<path d="M12 4v10M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/>',
+);
+export const ICON_EDIT = icon('<path d="M16.5 3.5a2.121 2.121 0 013 3L7.5 19l-4 1 1-4z"/>');
+export const ICON_REMOVE = ICON_CLOSE;
+export const ICON_PLAY_BADGE = ICON_PLAY;
+/** Choose files: an open folder (nothing leaves the device, so no cloud). */
+export const ICON_FOLDER = icon(
+  '<path d="M3.5 18V6.5a2 2 0 012-2h3.6l2 2.5h7.4a2 2 0 012 2V10"/><path d="M3.5 18l2.4-6.6a1.5 1.5 0 011.4-1h13.2a1 1 0 01.9 1.3L19.2 18a1.5 1.5 0 01-1.4 1H5a1.5 1.5 0 01-1.5-1z"/>',
+);
+/** Paste: a clipboard. */
+export const ICON_PASTE = icon(
+  '<path d="M15.5 4.5h1.5a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2v-12a2 2 0 012-2h1.5"/><rect x="8.5" y="3" width="7" height="3.5" rx="1.2"/>',
+);
+
+// View-mode pictograms: solid bars read crisper than outlines at 16px.
+const bar = (x: number, y: number, w: number, h: number, r: number): string =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="currentColor" stroke="none"/>`;
+
+/** Justified rows: frames of different widths, one height per row. */
+export const ICON_VIEW_ROWS = icon(
+  bar(3.5, 5, 9, 6, 1.3) +
+    bar(14, 5, 6.5, 6, 1.3) +
+    bar(3.5, 13, 5.5, 6, 1.3) +
+    bar(10.5, 13, 10, 6, 1.3),
+);
+/** Square crops in a grid. */
+export const ICON_VIEW_GRID = icon(
+  bar(4, 4, 7, 7, 1.4) + bar(13, 4, 7, 7, 1.4) + bar(4, 13, 7, 7, 1.4) + bar(13, 13, 7, 7, 1.4),
+);
+/** A filmstrip of tall frames running off the edge. */
+export const ICON_VIEW_STRIP = icon(bar(3.5, 6.5, 9.5, 11, 1.5) + bar(15, 6.5, 5.5, 11, 1.5));
+export const ICON_VIEW_LIST = icon(
+  bar(3.5, 4.5, 17, 3, 1.5) + bar(3.5, 10.5, 17, 3, 1.5) + bar(3.5, 16.5, 17, 3, 1.5),
+);

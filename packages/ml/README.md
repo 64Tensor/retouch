@@ -1,0 +1,265 @@
+# @64tensor/retouch-ml
+
+<p>
+  <a href="https://www.npmjs.com/package/@64tensor/retouch-ml"><img src="https://img.shields.io/npm/v/@64tensor/retouch-ml?color=D4572A&label=npm" alt="npm version" /></a>
+  <a href="https://github.com/64Tensor/retouch/blob/main/packages/ml/LICENSE"><img src="https://img.shields.io/npm/l/@64tensor/retouch-ml?color=1A1815" alt="license" /></a>
+</p>
+
+On-device ML tools for [Rétouch](https://github.com/64Tensor/retouch) — no
+server, no API keys. Models run in the browser through ONNX Runtime Web
+(WebGPU when available, WASM otherwise, inference in a worker so the UI never
+freezes); weights download on first use and are cached via the Cache API.
+
+## Install
+
+```bash
+npm install @64tensor/retouch @64tensor/retouch-ml
+```
+
+`@64tensor/retouch` is a peer dependency — the tools register into its editor
+through the plugin API and ride its edit model.
+
+## Features
+
+- **Cutout (background removal)** — MODNet (Apache-2.0, ~25 MB) by default;
+  point `modelUrl` at any BiRefNet ONNX export for higher fidelity. Registers
+  a "Cutout" tool in the editor that clears the photo's background to
+  transparent in place (the photo becomes a PNG), as one step you can undo.
+- **Upscale (4× super-resolution)** — Real-ESRGAN x4plus (BSD-3-Clause,
+  ~67 MB), run tile-by-tile with overlap so seams never show. WebGPU when the
+  device can take it, automatic WASM fallback when a kernel fails mid-run.
+  Inputs are capped at a 2048px long edge; transparency is preserved.
+- **Detect (faces + objects)** — UltraFace (MIT, ~1.2 MB) for faces and
+  YOLOX-nano (Apache-2.0, ~3.5 MB) for 80 COCO object classes with labeled
+  boxes. Either feeds three one-click actions: add a radial mask per box
+  (tune it in the Masks tool), **pixelate** for privacy (replaces the image
+  in place), or **crop to the detected boxes**. Mask/crop actions ride the
+  non-destructive edit model, so they undo like any other edit. What it finds
+  is a layer over the photo: point at a box or its row to bring it forward,
+  and pick one to act on it alone.
+- **Track (video)** — the same YOLOX-nano, run on a video's frames, with a
+  tracker that follows each object from the frame it enters to the frame it
+  leaves under one number. Boxes match by overlap with where each track is
+  heading; a class the detector wavers on (bicycle or motorcycle) doesn't
+  split a track, a one-frame false positive never gets a number, and a
+  track survives a few missed frames. Registers a "Track" tool for videos:
+  follow everything, or only people, vehicles or animals, through the
+  trimmed clip; each track plays boxed and numbered with a trail, and is
+  listed with its span on a timeline, on the same layer as Detect. Point at a
+  box or row to bring it forward. Pick a row to jump to it, or a box where it
+  is, then **trim** the video to it or **crop** to where it goes, or save the
+  tracks as JSON.
+  `trackVideo(video)` seeks through a clip and returns every frame's boxes
+  plus a summary of each track; `createTracker()` takes detections from any
+  source, frame by frame.
+- **Read text (OCR)** — PaddleOCR's two stages (Apache-2.0, ~13 MB together):
+  PP-OCRv4 finds the lines, at any angle, and PP-OCRv5's Latin recognizer
+  reads them in 32 languages, accents included (é, ñ, ş, ø…). The lines are
+  outlined on the photo and listed in reading order: **Copy text**, or
+  **Pixelate it** to hide every line (replaces the image in place).
+- **Select (click-to-segment)** — SlimSAM-77 (Apache-2.0, ~38 MB in two
+  files). Click any object to segment it on-device, refine with more clicks
+  (Subtract mode / shift-click removes), then **Cut out** to a transparent
+  PNG or **Erase object** in place (dilated mask through the LaMa
+  inpainter). The image encodes once and is cached, so refinement clicks
+  land in tens of milliseconds.
+- **Depth (bokeh)** — Depth Anything V2 Small (Apache-2.0, ~27 MB). One
+  analysis produces a depth map, its edges snapped to the photo's own with a
+  guided filter. The focus starts on the middle of the photo; click anything
+  to move it, then scrub Aperture with instant feedback (the blur is built
+  once per focus, in levels blended per pixel). The background blurs without
+  the sharp subject, so nothing glows around it, and what's in front of the
+  focus blurs over what's behind it, as through a lens. Apply renders the
+  result at full resolution and replaces the image in place.
+- **Denoise** — SCUNet real-PSNR (Apache-2.0 or MIT, ~77 MB as a small graph stub
+  plus a weights sidecar). One click removes real-world noise — sensor
+  grain, compression speckle — tile-by-tile at native resolution and
+  replaces the image in place; transparency is preserved and Reset brings
+  the original back. Inputs are capped at a 2048px long edge.
+- **Erase (heal brush)** — LaMa inpainting (Apache-2.0, ~208 MB). Paint over
+  an object, hit Erase: a padded square around the strokes runs through the
+  network and the fill composites back at full resolution, feathered and
+  masked-pixels-only. The result **replaces the image in place**, as one
+  undo step. Needs neutral geometry — reset
+  crop/transform/liquify first, or erase before transforming.
+
+## Usage
+
+```ts
+import { Retouch } from "@64tensor/retouch";
+import { installMlTools } from "@64tensor/retouch-ml";
+
+const retouch = new Retouch({ target: "#editor" });
+installMlTools(retouch);
+```
+
+In the editor, every tool leads with where its model stands: a Download button
+with the size, then the same button filling up with how much is in and the
+time left, then Ready. Which model it is, and what it runs on, sit behind an
+info button. The tool's own button says what it does and comes on once the
+model is here; the run shows on one line under it, then what to do next, and
+results wipe in over the photo. The AI tools menu says Ready beside each tool
+whose model is saved. With a self-hosted `modelUrl` the size shows once the
+download starts.
+
+Every tool is also a plain function you can call without the editor. Each
+takes an `HTMLImageElement | HTMLCanvasElement` plus options, and accepts
+`onDownloadProgress` for the first-run weight download:
+
+```ts
+import {
+  denoiseImage, detectFaces, detectObjects, estimateDepth,
+  inpaintStrokes, linesToText, recognizeText, removeBackground, trackVideo,
+  upscaleImage,
+} from "@64tensor/retouch-ml";
+
+const cutout = await removeBackground(image, {
+  onDownloadProgress: ({ loaded, total }) => console.log(loaded / total),
+});                                                  // HTMLCanvasElement (RGBA)
+const big = await upscaleImage(image, { onTileProgress: (done, total) => … });
+const clean = await denoiseImage(image);
+const faces = await detectFaces(image);              // [{ x, y, w, h, score }], normalized 0–1
+const things = await detectObjects(image);           // …plus `label` (COCO class)
+const lines = await recognizeText(image);            // [{ text, score, quad, x, y, w, h }], reading order
+linesToText(lines);                                  // "COTOPAXI\nCORAZÓN  4786m\n…"
+const healed = await inpaintStrokes(image, [{ x, y, r }, …]);
+const depth = await estimateDepth(image);            // { width, height, data: Float32Array } (0–1, higher = closer)
+const tracked = await trackVideo(video, {            // an HTMLVideoElement; it seeks through it
+  fps: 6,                                            // frames read per second of video
+  labels: ["person", "bicycle", "car"],              // optional: only these classes
+  onFrame: (frame, progress) => …,
+});                                                  // { fps, frames: [{ time, boxes: [{ id, label, x, y, w, h, score }] }],
+                                                     //   tracks: [{ id, label, firstSeen, lastSeen, hits }] }
+```
+
+`trackVideo` reads frames at up to 640 px (`maxSize`) and ignores boxes
+smaller than `minSize` (a fraction of the frame). To track detections from
+your own loop — a live camera, say — feed them to a tracker:
+
+```ts
+import { createTracker, detectObjects } from "@64tensor/retouch-ml";
+
+const tracker = createTracker();                     // { matchThreshold, maxMissed, minHits, trailLength }
+const tracks = tracker.update(await detectObjects(canvas), video.currentTime);
+// [{ id, label, x, y, w, h, score, firstSeen, lastSeen, hits, missed, trail }]
+```
+
+For your own bokeh UI: `prepareBokeh(image, depth)` once, then
+`composeBokeh(prep, focus, strength)` (focus is a depth, such as
+`depthAt(depth, x, y)` for a click; strength 0–1) for a preview, and
+`renderBokeh(prep, image, depth, focus, strength)` for the full-size result.
+
+`inpaintMask(image, maskCanvas)` takes a painted mask instead of strokes; the
+SAM pieces are exposed as `encodeSamImage` / `decodeSamClicks` / `pickBestMask`.
+
+## Options
+
+```ts
+installMlTools(retouch, {
+  cutout:  { refSize: 512 },                          // or false to skip the tool
+  upscale: { tileSize: 64, tileOverlap: 8, maxInputDim: 2048 },
+  denoise: { tileSize: 192, tileOverlap: 16, maxInputDim: 2048 },
+  erase:   { modelUrl },                              // LaMa inpainting (also backs Select → Erase object)
+  detect:  { scoreThreshold: 0.7, iouThreshold: 0.35, // faces (UltraFace)
+             objects: { scoreThreshold: 0.35, iouThreshold: 0.45 } }, // YOLOX
+  select:  { encoderUrl, decoderUrl },
+  text:    { detectorUrl, recognizerUrl, dictionaryUrl, maxSide: 1280, minScore: 0.5 },
+  track:   { fps: 6, minSize: 0.04, scoreThreshold: 0.35, matchThreshold: 0.2 }, // YOLOX + tracker
+  depth:   { modelUrl },
+  openResults: true,
+});
+```
+
+Any of the nine keys can be `false` to leave that tool out. The tools share
+one AI launcher on the editor's rail, and its menu lists each with a line on
+what it does and its download size. Every option
+group also accepts the runtime options below (`wasmPaths`,
+`executionProviders`, `externalDataUrl`, `onDownloadProgress`).
+`openResults` (default `true`) opens results that land in the gallery —
+Upscale, and Select's **Cut out** — in the editor as soon as they finish; pass
+`false` to leave them in the gallery quietly.
+
+## Self-hosting
+
+By default, model weights load from the Hugging Face CDN (UltraFace from its
+author's GitHub repo) and the ONNX Runtime `.wasm` binaries from jsDelivr. To
+stay fully first-party, host both yourself:
+
+```ts
+installMlTools(retouch, {
+  cutout: { modelUrl: "https://your.cdn/models/modnet.onnx", wasmPaths: "https://your.cdn/ort/" },
+  upscale: { modelUrl: "https://your.cdn/models/realesrgan-x4plus.onnx" },
+  erase: { modelUrl: "https://your.cdn/models/lama_fp32.onnx" },
+  detect: {
+    modelUrl: "https://your.cdn/models/ultraface-rfb-320.onnx",
+    objects: { modelUrl: "https://your.cdn/models/yolox_nano.onnx" },
+  },
+  track: { modelUrl: "https://your.cdn/models/yolox_nano.onnx" },
+  select: { encoderUrl: "https://your.cdn/models/sam-encoder.onnx", decoderUrl: "https://your.cdn/models/sam-decoder.onnx" },
+  depth: { modelUrl: "https://your.cdn/models/depth-anything-v2-small.onnx" },
+  text: {
+    detectorUrl: "https://your.cdn/models/ppocr-v4-det.onnx",
+    recognizerUrl: "https://your.cdn/models/ppocr-v5-latin-rec.onnx",
+    dictionaryUrl: "https://your.cdn/models/ppocr-v5-latin-dict.txt",
+  },
+  denoise: {
+    modelUrl: "https://your.cdn/models/scunet.onnx",
+    externalDataUrl: "https://your.cdn/models/scunet.onnx.data",
+  },
+});
+```
+
+Default model URLs are pinned to a commit of the repo that serves them, so a
+later change there can never alter what your users download; the
+`DEFAULT_*_MODEL_URL` constants expose them. Except for UltraFace, those repos
+are third-party ONNX conversions or mirrors, not the model authors' own.
+`wasmPaths` is page-global —
+setting it in any tool's options applies to every session. `executionProviders`
+(default `["webgpu", "wasm"]`) sets the preference order; a run that fails on
+WebGPU retries on WASM automatically.
+
+`await isModelCached(urls)` tells you whether a run would download anything
+(all of `urls` saved in the cache), and `await clearModelCache()` drops the
+cached weights.
+
+The denoise default is a split export: a graph stub plus a `.onnx.data`
+weights sidecar. When self-hosting it, keep the sidecar's filename identical
+to the location the graph references (`scunet_color_real_psnr.onnx.data` for
+the default). A custom `modelUrl` without `externalDataUrl` is treated as a
+single-file export — no sidecar is fetched.
+
+Self-hosting makes you the one distributing the weights, so keep
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) with your copies.
+[`third-party-models.json`](third-party-models.json) lists every default file's
+SHA-256 to check them against. A model you pick through `modelUrl` brings its
+own license, which is yours to check.
+
+## Licenses
+
+The package's code is MIT. That doesn't cover the models: the package contains
+no weights, and each model keeps its own license.
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) has their copyright lines and
+license texts, and [`third-party-models.json`](third-party-models.json) has each
+file's pinned URL, SHA-256, license evidence and training data, checked at
+source on 2026-11-07.
+
+| Default model | License |
+|---|---|
+| MODNet | Apache-2.0 |
+| Real-ESRGAN x4plus | BSD-3-Clause, inferred from the author's repo |
+| LaMa | Apache-2.0, inferred from the author's repo |
+| UltraFace | MIT |
+| YOLOX-nano | Apache-2.0 |
+| SlimSAM-77 | Apache-2.0 |
+| Depth Anything V2 Small | Apache-2.0 |
+| SCUNet | Apache-2.0 or MIT: the author's sources differ, so both notices ship |
+| PP-OCRv4 detector, PP-OCRv5 Latin recognizer | Apache-2.0 |
+
+ONNX Runtime Web is MIT.
+
+These licenses don't settle training data. Several models were trained on
+datasets whose terms limit commercial use, such as WIDER FACE (UltraFace),
+Places2 (LaMa) and DIV2K (Real-ESRGAN), and whether those terms reach the weights
+is an unsettled legal question. If that matters for your product, read the
+notices and ask your counsel. See `docs/ADVANCED-FEATURES.md` in the repo root
+for the per-model audit.

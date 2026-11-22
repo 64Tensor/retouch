@@ -1,0 +1,70 @@
+{
+  "name": "@64tensor/retouch-ml",
+  "version": "0.3.0",
+  "description": "On-device ML tools for Rétouch: cutout, 4× upscale, erase, click-to-select, depth bokeh, denoise, face and object detection, video object tracking and OCR, through ONNX Runtime Web.",
+  "author": "64Tensor LLC (https://64tensor.com)",
+  "license": "MIT",
+  "homepage": "https://github.com/64Tensor/retouch/tree/main/packages/ml#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/64Tensor/retouch.git",
+    "directory": "packages/ml"
+  },
+  "bugs": {
+    "url": "https://github.com/64Tensor/retouch/issues"
+  },
+  "keywords": [
+    "retouch",
+    "image-editor",
+    "onnx",
+    "onnxruntime-web",
+    "webgpu",
+    "background-removal",
+    "super-resolution",
+    "inpainting",
+    "segment-anything",
+    "depth-estimation",
+    "denoise",
+    "ocr",
+    "object-detection",
+    "object-tracking"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./third-party-models.json": "./third-party-models.json",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./third-party-models.json": "./third-party-models.json",
+      "./package.json": "./package.json"
+    },
+    "types": "./dist/index.d.ts"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES.md",
+    "third-party-models.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.22.0"
+  },
+  "peerDependencies": {
+    "@64tensor/retouch": "workspace:^"
+  },
+  "devDependencies": {
+    "@64tensor/retouch": "workspace:*"
+  }
+}

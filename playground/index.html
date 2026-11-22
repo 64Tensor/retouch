@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rétouch playground</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        font: 14px/1.5 system-ui, sans-serif;
+      }
+      header {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        padding: 8px 16px;
+        border-bottom: 1px solid #0002;
+      }
+      #editor {
+        flex: 1;
+        min-height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Rétouch playground</strong>
+      <label><input type="checkbox" id="ml" /> ML tools</label>
+      <span id="version"></span>
+    </header>
+    <div id="editor"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,383 @@
+import { loadOrt, loadSession, type RuntimeOptions, runResilient } from "./runtime";
+
+/**
+ * Click-to-select via SlimSAM-77 (Apache-2.0): the image encodes once into
+ * embeddings (~40 MB of model across two files), then every click runs only
+ * the small prompt decoder, so refinement feels instant.
+ *
+ * Conventions verified against the exports: encoder takes RGB /255 with
+ * ImageNet mean/std, longest edge resized to 1024 and zero-padded
+ * bottom/right AFTER normalization; it emits image_embeddings AND
+ * image_positional_embeddings, both of which feed the decoder. Decoder
+ * points are in the 1024-resized space (scale = 1024/max(W,H)), labels are
+ * int64 (1 = keep, 0 = remove); it returns 3 candidate masks as 256×256
+ * logits with per-mask IoU scores. Post: pick argmax(iou), sigmoid → gray,
+ * bilinear-upsample, crop the padding, resize to the original, threshold.
+ */
+
+export const DEFAULT_SAM_ENCODER_URL =
+  "https://huggingface.co/Xenova/slimsam-77-uniform/resolve/5850ab45f587c112167512ffef949107115e26a0/onnx/vision_encoder.onnx";
+export const DEFAULT_SAM_DECODER_URL =
+  "https://huggingface.co/Xenova/slimsam-77-uniform/resolve/5850ab45f587c112167512ffef949107115e26a0/onnx/prompt_encoder_mask_decoder.onnx";
+
+/** The network's fixed spatial size. */
+export const SAM_SIZE = 1024;
+
+const MEAN = [0.485, 0.456, 0.406];
+const STD = [0.229, 0.224, 0.225];
+
+export interface SamOptions extends RuntimeOptions {
+  encoderUrl?: string;
+  decoderUrl?: string;
+}
+
+/** One prompt click, normalized 0–1 over the source. 1 = keep, 0 = remove. */
+export interface SamPoint {
+  x: number;
+  y: number;
+  label: 0 | 1;
+}
+
+/** Cached per-image encoder outputs plus the source dimensions. */
+export interface SamEmbeddings {
+  image: Float32Array;
+  positional: Float32Array;
+  width: number;
+  height: number;
+}
+
+/** Longest edge → SAM_SIZE, the other side rounded (≥1), aspect kept. */
+export function samResizedSize(width: number, height: number): { width: number; height: number } {
+  const scale = SAM_SIZE / Math.max(width, height, 1);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+/**
+ * Resized-image RGBA → CHW float tensor data at SAM_SIZE²: /255 then
+ * ImageNet-normalized, zero-padded bottom/right (padding stays 0 — the
+ * normalization is applied to image pixels only, per the HF processor).
+ */
+export function rgbaToSamTensor(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Float32Array {
+  const plane = SAM_SIZE * SAM_SIZE;
+  const chw = new Float32Array(plane * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const p = y * SAM_SIZE + x;
+      chw[p] = (data[i] / 255 - MEAN[0]) / STD[0];
+      chw[plane + p] = (data[i + 1] / 255 - MEAN[1]) / STD[1];
+      chw[plane * 2 + p] = (data[i + 2] / 255 - MEAN[2]) / STD[2];
+    }
+  }
+  return chw;
+}
+
+/** Normalized clicks → decoder tensors (coords in the 1024-resized space). */
+export function pointsToSamTensors(
+  points: SamPoint[],
+  srcWidth: number,
+  srcHeight: number,
+): { coords: Float32Array; labels: BigInt64Array } {
+  const scale = SAM_SIZE / Math.max(srcWidth, srcHeight, 1);
+  const coords = new Float32Array(points.length * 2);
+  const labels = new BigInt64Array(points.length);
+  for (let i = 0; i < points.length; i++) {
+    coords[i * 2] = points[i].x * srcWidth * scale;
+    coords[i * 2 + 1] = points[i].y * srcHeight * scale;
+    labels[i] = BigInt(points[i].label);
+  }
+  return { coords, labels };
+}
+
+/** The part of each low-res mask that holds the photo (the rest is padding). */
+export interface MaskRegion {
+  width: number;
+  height: number;
+  /** Row length of the mask grid. */
+  stride: number;
+}
+
+/** A candidate at least this stable counts as crisp. */
+const STABLE = 0.9;
+
+/**
+ * How stable a candidate mask is: of the pixels in at a logit threshold of
+ * −1, the share still in at +1. A crisp object scores near 1; a blob that
+ * fades into its surroundings scores low. Segment Anything's own mask
+ * generator filters on the same measure.
+ */
+export function maskStability(mask: Float32Array, region?: MaskRegion): number {
+  const width = region?.width ?? mask.length;
+  const height = region?.height ?? 1;
+  const stride = region?.stride ?? mask.length;
+  let inside = 0;
+  let firm = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const v = mask[y * stride + x];
+      if (v > -1) inside++;
+      if (v > 1) firm++;
+    }
+  }
+  return inside === 0 ? 0 : firm / inside;
+}
+
+/**
+ * The decoder's candidates, best first. SlimSAM's IoU guesses sit close
+ * together and often favour a blob that spills past the object, so crisp
+ * candidates come first, ordered by IoU guess; the others follow, ordered
+ * by IoU guess weighted by stability.
+ */
+export function rankMasks(
+  iouScores: Float32Array,
+  masks: Float32Array,
+  maskPixels: number,
+  region?: MaskRegion,
+): number[] {
+  const scored = [...iouScores].map((iou, i) => {
+    const stability = maskStability(masks.subarray(i * maskPixels, (i + 1) * maskPixels), region);
+    return { i, iou, stability, crisp: stability >= STABLE };
+  });
+  scored.sort((a, b) =>
+    a.crisp !== b.crisp
+      ? Number(b.crisp) - Number(a.crisp)
+      : a.crisp
+        ? b.iou - a.iou
+        : b.iou * b.stability - a.iou * a.stability,
+  );
+  return scored.map((s) => s.i);
+}
+
+/** The best of the decoder's candidate masks (see rankMasks). */
+export function pickBestMask(
+  iouScores: Float32Array,
+  masks: Float32Array,
+  maskPixels: number,
+  region?: MaskRegion,
+): { mask: Float32Array; score: number } {
+  const best = rankMasks(iouScores, masks, maskPixels, region)[0] ?? 0;
+  return {
+    mask: masks.subarray(best * maskPixels, (best + 1) * maskPixels),
+    score: iouScores[best],
+  };
+}
+
+/**
+ * Mask logits → opaque grayscale RGBA (sigmoid × 255), so a canvas bilinear
+ * upsample followed by a 127 threshold approximates interpolating the
+ * logits — verified equivalent on the reference implementation.
+ */
+export function maskLogitsToGray(mask: Float32Array): Uint8ClampedArray<ArrayBuffer> {
+  const rgba = new Uint8ClampedArray(mask.length * 4);
+  for (let p = 0; p < mask.length; p++) {
+    const v = (1 / (1 + Math.exp(-mask[p]))) * 255;
+    rgba[p * 4] = v;
+    rgba[p * 4 + 1] = v;
+    rgba[p * 4 + 2] = v;
+    rgba[p * 4 + 3] = 255;
+  }
+  return rgba;
+}
+
+function canvasOf(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+/** Per-image embedding cache, keyed by element identity (a replaced image
+ * is a new element, so invalidation is automatic). ~8 MiB per entry. */
+const EMBED_CACHE_MAX = 3;
+const embedCache = new Map<HTMLImageElement | HTMLCanvasElement, Promise<SamEmbeddings>>();
+
+/** Drop all cached embeddings (frees ~8 MiB per analyzed image). */
+export function clearSamCache(): void {
+  embedCache.clear();
+}
+
+/**
+ * Encode an image into SAM embeddings, memoized per element. The decoder
+ * download is kicked off in parallel so the first click after analysis
+ * doesn't wait on it.
+ */
+export function encodeSamImage(
+  source: HTMLImageElement | HTMLCanvasElement,
+  options: SamOptions = {},
+): Promise<SamEmbeddings> {
+  const cached = embedCache.get(source);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const srcW = "naturalWidth" in source ? source.naturalWidth : source.width;
+    const srcH = "naturalHeight" in source ? source.naturalHeight : source.height;
+    if (srcW < 2 || srcH < 2) throw new Error("[Retouch ML] Image too small to analyze");
+
+    // Warm the decoder while the encoder downloads/runs.
+    void loadSession(options.decoderUrl ?? DEFAULT_SAM_DECODER_URL, {
+      ...options,
+      onDownloadProgress: undefined,
+    }).catch(() => {});
+
+    const resized = samResizedSize(srcW, srcH);
+    const canvas = canvasOf(resized.width, resized.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("[Retouch ML] Failed to create canvas context");
+    ctx.drawImage(source, 0, 0, resized.width, resized.height);
+    const data = ctx.getImageData(0, 0, resized.width, resized.height).data;
+
+    const ort = await loadOrt();
+    const input = new ort.Tensor("float32", rgbaToSamTensor(data, resized.width, resized.height), [
+      1,
+      3,
+      SAM_SIZE,
+      SAM_SIZE,
+    ]);
+    const { session, results } = await runResilient(
+      options.encoderUrl ?? DEFAULT_SAM_ENCODER_URL,
+      options,
+      (s) => ({ [s.inputNames[0]]: input }),
+    );
+    return {
+      image: results[session.outputNames[0]].data as Float32Array,
+      positional: results[session.outputNames[1]].data as Float32Array,
+      width: srcW,
+      height: srcH,
+    };
+  })();
+  promise.catch(() => embedCache.delete(source));
+  embedCache.set(source, promise);
+  // Simple LRU: evict the oldest entry beyond the cap.
+  if (embedCache.size > EMBED_CACHE_MAX) {
+    const oldest = embedCache.keys().next().value;
+    if (oldest) embedCache.delete(oldest);
+  }
+  return promise;
+}
+
+/** Everything the decoder proposed for a set of clicks. */
+export interface SamCandidates {
+  /** Each candidate's 256×256 mask logits, one after another. */
+  masks: Float32Array;
+  /** The part of the 256² grid that holds the photo; the rest is padding. */
+  region: MaskRegion;
+  /** The candidates' indexes, best first (see rankMasks). */
+  order: number[];
+  /** The model's guess at each candidate's quality. */
+  iou: Float32Array;
+  /** The source's size. */
+  width: number;
+  height: number;
+}
+
+/** The decoder's grid side. */
+const MASK_SIDE = 256;
+
+/** Run the prompt decoder for the given clicks, keeping every candidate. */
+export async function decodeSamCandidates(
+  embeddings: SamEmbeddings,
+  points: SamPoint[],
+  options: SamOptions = {},
+): Promise<SamCandidates> {
+  if (points.length === 0) throw new Error("[Retouch ML] No prompt points");
+  const ort = await loadOrt();
+  const { coords, labels } = pointsToSamTensors(points, embeddings.width, embeddings.height);
+  const feeds = {
+    input_points: new ort.Tensor("float32", coords, [1, 1, points.length, 2]),
+    input_labels: new ort.Tensor("int64", labels, [1, 1, points.length]),
+    image_embeddings: new ort.Tensor("float32", embeddings.image, [1, 256, 64, 64]),
+    image_positional_embeddings: new ort.Tensor("float32", embeddings.positional, [1, 256, 64, 64]),
+  };
+  const { session, results } = await runResilient(
+    options.decoderUrl ?? DEFAULT_SAM_DECODER_URL,
+    options,
+    () => feeds,
+  );
+  const iou = results[session.outputNames[0]].data as Float32Array;
+  const masks = results[session.outputNames[1]].data as Float32Array;
+  const resized = samResizedSize(embeddings.width, embeddings.height);
+  const region: MaskRegion = {
+    width: Math.round((MASK_SIDE * resized.width) / SAM_SIZE),
+    height: Math.round((MASK_SIDE * resized.height) / SAM_SIZE),
+    stride: MASK_SIDE,
+  };
+  return {
+    masks,
+    region,
+    order: rankMasks(iou, masks, MASK_SIDE * MASK_SIDE, region),
+    iou,
+    width: embeddings.width,
+    height: embeddings.height,
+  };
+}
+
+/** One candidate's logits. */
+export function candidateLogits(candidates: SamCandidates, index: number): Float32Array {
+  const pixels = MASK_SIDE * MASK_SIDE;
+  return candidates.masks.subarray(index * pixels, (index + 1) * pixels);
+}
+
+/**
+ * One candidate as a white-on-black mask, at the source's size or any
+ * other (a small one to draw on screen, say).
+ */
+export function candidateMask(
+  candidates: SamCandidates,
+  index: number,
+  width = candidates.width,
+  height = candidates.height,
+): HTMLCanvasElement {
+  // 256² sigmoid-gray → bilinear up to the output, dropping the padding.
+  const side = MASK_SIDE;
+  const small = canvasOf(side, side);
+  small
+    .getContext("2d")
+    ?.putImageData(
+      new ImageData(maskLogitsToGray(candidateLogits(candidates, index)), side, side),
+      0,
+      0,
+    );
+  const out = canvasOf(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)));
+  const outCtx = out.getContext("2d");
+  if (!outCtx) throw new Error("[Retouch ML] Failed to create canvas context");
+  outCtx.imageSmoothingEnabled = true;
+  outCtx.imageSmoothingQuality = "high";
+  const { region } = candidates;
+  outCtx.drawImage(small, 0, 0, region.width, region.height, 0, 0, out.width, out.height);
+  const image = outCtx.getImageData(0, 0, out.width, out.height);
+  const d = image.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] > 127 ? 255 : 0;
+    d[i] = v;
+    d[i + 1] = v;
+    d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  outCtx.putImageData(image, 0, 0);
+  return out;
+}
+
+/**
+ * Run the prompt decoder for the given clicks. Returns a white-on-black
+ * binary mask canvas at the source resolution plus the model's confidence.
+ * `pick` steps through the candidates, best first (see rankMasks), and wraps
+ * around; `candidates` is how many there are to step through.
+ */
+export async function decodeSamClicks(
+  embeddings: SamEmbeddings,
+  points: SamPoint[],
+  options: SamOptions = {},
+  pick = 0,
+): Promise<{ mask: HTMLCanvasElement; score: number; candidates: number }> {
+  const found = await decodeSamCandidates(embeddings, points, options);
+  const { order } = found;
+  const chosen = order[((pick % order.length) + order.length) % order.length] ?? 0;
+  return { mask: candidateMask(found, chosen), score: found.iou[chosen], candidates: order.length };
+}

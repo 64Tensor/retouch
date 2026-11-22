@@ -1,0 +1,42 @@
+{
+  "name": "retouch-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26.13.1",
+      "onFail": "download"
+    }
+  },
+  "scripts": {
+    "dev": "pnpm --filter playground dev",
+    "build": "pnpm --filter \"./packages/*\" build",
+    "typecheck": "pnpm -r typecheck",
+    "check": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "smoke": "node scripts/smoke.mjs",
+    "verify": "pnpm typecheck && pnpm check && pnpm test && pnpm build && pnpm smoke",
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/sync-version.mjs && biome format --write packages",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@biomejs/biome": "2.6.8",
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.3",
+    "@types/node": "26.6.6",
+    "@vitest/coverage-v8": "5.1.1",
+    "jsdom": "31.0.1",
+    "publint": "0.3.25",
+    "tsdown": "0.23.7",
+    "typescript": "7.0.2",
+    "vitest": "5.1.1",
+    "vitest-canvas-mock": "1.2.0"
+  }
+}

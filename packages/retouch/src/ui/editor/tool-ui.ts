@@ -1,0 +1,462 @@
+import { h } from "../h";
+import { ICON_SPARKLE } from "../icons";
+import {
+  createCard,
+  createList,
+  createModel,
+  createSection,
+  createStatus,
+  createSteps,
+  createTiles,
+} from "./controls";
+import { createSlider } from "./slider";
+
+type Content = Node | string;
+
+/** Options for `ctx.ui.slider()`. */
+export interface UiSliderOptions {
+  label: string;
+  /** Accessible name, when the visible label alone is ambiguous ("Aperture strength"). */
+  ariaLabel?: string;
+  min: number;
+  max: number;
+  /** Defaults to 1. */
+  step?: number;
+  value: number;
+  /**
+   * The resting value: the track fills outward from it, a dot marks the
+   * slider while it's elsewhere, and double-clicking returns to it. Defaults
+   * to 0 when the range spans zero, otherwise `min`.
+   */
+  neutral?: number;
+  /** Where the fill starts, when that isn't `neutral` (a brush size resting at 6 still fills from its minimum). */
+  fillFrom?: number;
+  /**
+   * A track that shows what the slider does, as a CSS image — e.g.
+   * `"linear-gradient(90deg, #3f86ff, #ffa53a)"` for a cool-to-warm control.
+   * Replaces the fill.
+   */
+  track?: string;
+  /** Readout text. Defaults to the number, signed when the range spans zero. */
+  format?: (value: number) => string;
+  /**
+   * Reads a typed value back, the inverse of `format`. Defaults to the first
+   * number in the text, so units and signs are fine.
+   */
+  parse?: (text: string) => number | null;
+  /** Fires continuously while the value changes. */
+  onInput: (value: number) => void;
+  /** Fires once per gesture (release, key press, reset): the place to `record()` history. */
+  onChange?: (value: number) => void;
+}
+
+export interface UiSlider {
+  root: HTMLElement;
+  readonly value: number;
+  /** Move the slider without firing callbacks, e.g. from your pane's `sync()`. */
+  set(value: number): void;
+}
+
+/** Options for `ctx.ui.button()`. */
+export interface UiButtonOptions {
+  label: string;
+  onClick: () => void;
+  /**
+   * "primary" marks the pane's main action; "ai" marks one that runs a model
+   * on this device (the prism ring, with a sparkle).
+   */
+  variant?: "default" | "primary" | "ai";
+  /** Give it a pressed state (and make it a toggle for assistive tech). */
+  active?: boolean;
+  disabled?: boolean;
+  /** Tooltip text. */
+  title?: string;
+}
+
+export interface UiButton {
+  root: HTMLButtonElement;
+  setLabel(label: string): void;
+  setActive(active: boolean): void;
+  setDisabled(disabled: boolean): void;
+}
+
+/** Options for `ctx.ui.choice()`. */
+export interface UiChoiceOptions<T extends string> {
+  /** Names the group for assistive tech. */
+  label: string;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}
+
+export interface UiChoice<T extends string> {
+  root: HTMLElement;
+  readonly value: T;
+  /** Select an option without firing `onChange`. */
+  set(value: T): void;
+}
+
+export interface UiNote {
+  root: HTMLElement;
+  set(text: string): void;
+}
+
+/** Options for `ctx.ui.output()`. */
+export interface UiOutputOptions {
+  /** Names the block for assistive tech. */
+  label: string;
+  text?: string;
+}
+
+export interface UiOutput {
+  root: HTMLElement;
+  /** Replace the text; empty hides the block. */
+  set(text: string): void;
+}
+
+/** One row of `ctx.ui.list()`. */
+export interface UiListItem<T extends string> {
+  value: T;
+  label: string;
+  /** A note on the right: a count, a duration. */
+  detail?: string;
+  /** A swatch before the label, as any CSS color. */
+  color?: string;
+  /** Where the item sits along a timeline, start and end from 0 to 1, drawn as a bar. */
+  span?: readonly [start: number, end: number];
+}
+
+/** Options for `ctx.ui.list()`. */
+export interface UiListOptions<T extends string> {
+  /** Names the list for assistive tech. */
+  label: string;
+  items: ReadonlyArray<UiListItem<T>>;
+  /** The picked row, or null for none. */
+  value?: T | null;
+  /** A row was clicked: its value, or null when it was already picked (a second click lets go). */
+  onChange: (value: T | null) => void;
+  /** The row under the pointer or keyboard focus, then null when it leaves. */
+  onHover?: (value: T | null) => void;
+}
+
+export interface UiList<T extends string> {
+  root: HTMLElement;
+  readonly value: T | null;
+  /** Pick a row (or none) without firing `onChange`. */
+  set(value: T | null): void;
+  /** Replace the rows; the pick is kept if its row still exists. */
+  setItems(items: ReadonlyArray<UiListItem<T>>): void;
+  /** Light the rows that are current — what's in the frame now, say — without picking them. */
+  setCurrent(values: Iterable<T>): void;
+  /** A playhead across the spans, from 0 to 1; null hides it. */
+  setTime(time: number | null): void;
+  /** Light a row as if pointed at, scrolling the list to it; null for none. */
+  setHighlight(value: T | null): void;
+}
+
+/** Options for `ctx.ui.card()`. */
+export interface UiCardOptions {
+  /** What the tool does, and where its result goes. */
+  description?: string;
+  /** Label–value rows: the model, what it downloads, where it runs. */
+  facts?: ReadonlyArray<readonly [label: string, value: string]>;
+}
+
+export interface UiCard {
+  root: HTMLElement;
+  /** Where the card's own controls go (a run button, steps). */
+  body: HTMLElement;
+  /** Change a fact's value (or add the fact), e.g. once a model is saved. */
+  setFact(label: string, value: string): void;
+}
+
+/** One line of `ctx.ui.steps()`. */
+export interface UiStep {
+  label: string;
+  /** A note on the right: a size, a time, where the result goes. */
+  detail?: string;
+}
+
+export type UiStepState = "waiting" | "active" | "done" | "failed";
+
+/** Options for `ctx.ui.steps()`. */
+export interface UiStepsOptions {
+  /** Names the list for assistive tech. */
+  label: string;
+  steps: ReadonlyArray<UiStep>;
+}
+
+export interface UiSteps {
+  root: HTMLElement;
+  /**
+   * Mark a step. While it's active, `progress` (0–1) shows a bar; `detail`
+   * replaces its note. State changes are announced to screen readers.
+   */
+  set(index: number, state: UiStepState, update?: { detail?: string; progress?: number }): void;
+  /** Every step back to waiting, with its original note. */
+  reset(): void;
+}
+
+/** Options for `ctx.ui.model()`. */
+export interface UiModelOptions {
+  /** The download's size in bytes, shown on its button; null when it isn't known. */
+  bytes: number | null;
+  /** What it's for, when a pane has more than one download ("Erase"): "Download Erase". */
+  name?: string;
+  /** The info panel: a line on what it is, then label–value rows (the model, where it runs). */
+  about?: { text?: string; facts?: ReadonlyArray<readonly [label: string, value: string]> };
+  /** Download, or Try again, was pressed. */
+  onDownload: () => void;
+}
+
+/**
+ * Where a model stands: "missing" offers the download, "downloading" shows
+ * how far along it is and the time left, "ready" says so, and "failed" offers
+ * to try again.
+ */
+export type UiModelState = "missing" | "downloading" | "ready" | "failed";
+
+export interface UiModel {
+  root: HTMLElement;
+  /** Null until the first `set()` or `progress()`; it stays out of sight till then. */
+  readonly state: UiModelState | null;
+  set(state: Exclude<UiModelState, "downloading">): void;
+  /** Bytes so far, and the total (0 when unknown): shows the download under way. */
+  progress(loaded: number, total: number): void;
+  /** Change a row of the info panel, or add it. */
+  setFact(label: string, value: string): void;
+}
+
+export interface UiStatus {
+  root: HTMLElement;
+  /** Under way: what's happening, and optionally a note on the right and 0–1 progress for a bar. */
+  working(label: string, update?: { detail?: string; progress?: number }): void;
+  /** Finished, with the result in a few words ("Background removed"). */
+  done(label: string, detail?: string): void;
+  /** It didn't work, and why. */
+  failed(label: string): void;
+  /** Nothing to show. */
+  clear(): void;
+}
+
+/** One tile for `ctx.ui.tiles()`. */
+export interface UiTileOption<T extends string> {
+  value: T;
+  label: string;
+  /** Image URL shown in the tile — typically `ctx.preview(…)`. */
+  preview?: string;
+}
+
+/** Options for `ctx.ui.tiles()`. */
+export interface UiTilesOptions<T extends string> {
+  /** Names the group for assistive tech. */
+  label: string;
+  options: ReadonlyArray<UiTileOption<T>>;
+  /** The pressed tile, or null for none. */
+  value: T | null;
+  onChange: (value: T) => void;
+  /** Tiles per row. Defaults to 3. */
+  columns?: number;
+}
+
+export interface UiTiles<T extends string> {
+  root: HTMLElement;
+  readonly value: T | null;
+  /** Press a tile (or none) without firing `onChange`. */
+  set(value: T | null): void;
+  /** Swap a tile's picture, e.g. to redraw previews when your pane opens. */
+  setPreview(value: T, src: string): void;
+}
+
+/**
+ * Builders for custom tool panes, available as `ctx.ui`. What they return
+ * looks and behaves like the built-in controls, and keeps doing so as the
+ * editor's design changes, so a plugin never has to style anything itself.
+ */
+export interface ToolUi {
+  /** A line of controls. A pane is usually one or more rows. */
+  row(...children: Content[]): HTMLElement;
+  /** A titled group of controls. */
+  section(title: string, ...children: Content[]): HTMLElement;
+  /**
+   * A labeled slider: filled (or `track`) bar, a value you can type into, a
+   * dot while it's off neutral, and double-click to reset.
+   */
+  slider(options: UiSliderOptions): UiSlider;
+  /** A pill button. */
+  button(options: UiButtonOptions): UiButton;
+  /** One of several options, shown as pills. */
+  choice<T extends string>(options: UiChoiceOptions<T>): UiChoice<T>;
+  /** A line of status or hint text; updates are announced to screen readers. */
+  note(text: string): UiNote;
+  /**
+   * A block of read-only text a tool produced (text read from a photo, say),
+   * selectable and scrollable, its lines kept.
+   */
+  output(options: UiOutputOptions): UiOutput;
+  /** Preview tiles to choose between, like the built-in Filters. */
+  tiles<T extends string>(options: UiTilesOptions<T>): UiTiles<T>;
+  /**
+   * Rows to pick from — things a tool found, each with a swatch, a note and
+   * optionally a span on a timeline — scrolling past a dozen or so.
+   */
+  list<T extends string>(options: UiListOptions<T>): UiList<T>;
+  /**
+   * A card for an AI tool: what it does, then facts such as the model, its
+   * download size and where it runs, so nobody starts a download blind.
+   */
+  card(options: UiCardOptions): UiCard;
+  /** A run's steps (download, run, save), each waiting, active, done or failed. */
+  steps(options: UiStepsOptions): UiSteps;
+  /**
+   * Where an AI tool's model stands, to lead its card: a Download button with
+   * the size, then the download's progress and time left, then Ready. An info
+   * button opens what it is: the model, its size, where it runs.
+   */
+  model(options: UiModelOptions): UiModel;
+  /** A run on one line: working (with a bar when there's progress), done, or failed. */
+  status(): UiStatus;
+}
+
+/** Listeners are bound to `signal`, so they go away with the editor. */
+export function createToolUi(signal?: AbortSignal): ToolUi {
+  const listen = signal ? { signal } : undefined;
+
+  return {
+    row: (...children) => h("div", { class: "rt-dock__row" }, ...children),
+
+    section: (title, ...children) => createSection({ title }, ...children).root,
+
+    slider(options) {
+      const slider = createSlider(options, signal);
+      return {
+        root: slider.root,
+        get value() {
+          return slider.value;
+        },
+        set: (value) => slider.set(value),
+      };
+    },
+
+    button(options) {
+      const root = h("button", { type: "button", class: "rt-dock__chip" });
+      // The "ai" variant leads with a sparkle; its label lives beside it.
+      let labelEl: HTMLElement = root;
+      if (options.variant === "ai") {
+        root.classList.add("rt-dock__chip--ai");
+        root.innerHTML = ICON_SPARKLE;
+        labelEl = h("span", { class: "rt-dock__chip-label" });
+        root.appendChild(labelEl);
+      }
+      labelEl.textContent = options.label;
+      if (options.variant === "primary") root.classList.add("rt-dock__chip--primary");
+      if (options.title) root.title = options.title;
+      root.disabled = options.disabled ?? false;
+      const setActive = (active: boolean): void => {
+        root.classList.toggle("rt-dock__chip--active", active);
+        root.setAttribute("aria-pressed", String(active));
+      };
+      if (options.active !== undefined) setActive(options.active);
+      root.addEventListener("click", () => options.onClick(), listen);
+      return {
+        root,
+        setLabel: (label) => {
+          labelEl.textContent = label;
+        },
+        setActive,
+        setDisabled: (disabled) => {
+          root.disabled = disabled;
+        },
+      };
+    },
+
+    choice<T extends string>(options: UiChoiceOptions<T>): UiChoice<T> {
+      let current = options.value;
+      const buttons = new Map<T, HTMLButtonElement>();
+      const root = h("div", {
+        class: "rt-dock__group",
+        role: "group",
+        "aria-label": options.label,
+      });
+      const paint = (): void => {
+        for (const [value, btn] of buttons) {
+          btn.classList.toggle("rt-dock__chip--active", value === current);
+          btn.setAttribute("aria-pressed", String(value === current));
+        }
+      };
+      for (const option of options.options) {
+        const btn = h("button", { type: "button", class: "rt-dock__chip" }, option.label);
+        btn.addEventListener(
+          "click",
+          () => {
+            if (option.value === current) return;
+            current = option.value;
+            paint();
+            options.onChange(current);
+          },
+          listen,
+        );
+        buttons.set(option.value, btn);
+        root.appendChild(btn);
+      }
+      paint();
+      return {
+        root,
+        get value() {
+          return current;
+        },
+        set(value) {
+          current = value;
+          paint();
+        },
+      };
+    },
+
+    tiles: (options) => createTiles(options, signal),
+
+    list: (options) => createList(options, signal),
+
+    card: (options) => createCard(options),
+
+    steps: (options) => createSteps(options),
+
+    model: (options) => createModel(options, signal),
+
+    status: () => createStatus(),
+
+    note(text) {
+      const root = h(
+        "span",
+        { class: "rt-dock__slider-label rt-dock__status", "aria-live": "polite" },
+        text,
+      );
+      return {
+        root,
+        set: (next) => {
+          root.textContent = next;
+        },
+      };
+    },
+    output(options) {
+      // Focusable so keyboard users can scroll it and select from it.
+      const root = h(
+        "div",
+        {
+          class: "rt-output",
+          role: "textbox",
+          "aria-readonly": "true",
+          "aria-multiline": "true",
+          "aria-label": options.label,
+          tabindex: "0",
+        },
+        options.text ?? "",
+      );
+      return {
+        root,
+        set: (next) => {
+          root.textContent = next;
+        },
+      };
+    },
+  };
+}

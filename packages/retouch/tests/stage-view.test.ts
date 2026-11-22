@@ -1,0 +1,665 @@
+import type { CanvasRenderer } from "../src/ui/editor/canvas-renderer";
+import { clampPan, createStageView, pinchView, zoomAround } from "../src/ui/editor/stage-view";
+
+/** The pan and zoom in an element's transform, however the DOM chose to write them down. */
+function transformOf(el: HTMLElement): { x: number; y: number; scale: number } {
+  const m = /translate\((-?[\d.]+)px(?:,\s*(-?[\d.]+)px)?\)\s*scale\(([\d.e-]+)\)/.exec(
+    el.style.transform,
+  );
+  if (!m) throw new Error(`Not a pan and zoom: "${el.style.transform}"`);
+  return { x: Number(m[1]), y: Number(m[2] ?? 0), scale: Number(m[3]) };
+}
+
+describe("zoomAround", () => {
+  it("keeps the point under the cursor still", () => {
+    const pan = { x: 20, y: -10 };
+    const cursor = { x: 100, y: 50 };
+    const next = zoomAround(pan, cursor, 1, 2);
+    // The content point under the cursor, before and after.
+    expect((cursor.x - pan.x) / 1).toBeCloseTo((cursor.x - next.x) / 2);
+    expect((cursor.y - pan.y) / 1).toBeCloseTo((cursor.y - next.y) / 2);
+  });
+
+  it("is a no-op when the zoom doesn't change", () => {
+    expect(zoomAround({ x: 5, y: 6 }, { x: 100, y: 50 }, 1.5, 1.5)).toEqual({ x: 5, y: 6 });
+  });
+});
+
+describe("pinchView", () => {
+  it("zooms with the fingers' spread, keeping the photo under their midpoint", () => {
+    const start = { zoom: 1, pan: { x: 0, y: 0 }, mid: { x: 100, y: 0 }, distance: 100 };
+    const view = pinchView(start, { x: 100, y: 0 }, 200, 8);
+    expect(view.zoom).toBe(2);
+    expect((100 - view.pan.x) / 2).toBeCloseTo((100 - 0) / 1);
+  });
+
+  it("follows the midpoint as the fingers travel, between fit and the most zoom", () => {
+    const start = { zoom: 2, pan: { x: 10, y: 0 }, mid: { x: 0, y: 0 }, distance: 100 };
+    expect(pinchView(start, { x: 30, y: -20 }, 100, 8)).toEqual({
+      zoom: 2,
+      pan: { x: 40, y: -20 },
+    });
+    expect(pinchView(start, { x: 0, y: 0 }, 10, 8).zoom).toBe(1);
+    expect(pinchView(start, { x: 0, y: 0 }, 1000, 8).zoom).toBe(8);
+  });
+});
+
+describe("clampPan", () => {
+  it("centers content that fits", () => {
+    const pan = clampPan(
+      { x: 80, y: -40 },
+      { width: 300, height: 200 },
+      { width: 800, height: 600 },
+    );
+    expect(pan).toEqual({ x: 0, y: 0 });
+  });
+
+  it("lets larger content slide until its edge meets the viewport's, plus slack", () => {
+    const content = { width: 1800, height: 1000 };
+    const viewport = { width: 800, height: 600 };
+    expect(clampPan({ x: 5000, y: -5000 }, content, viewport, 48)).toEqual({ x: 548, y: -248 });
+    expect(clampPan({ x: 100, y: 50 }, content, viewport, 48)).toEqual({ x: 100, y: 50 });
+  });
+});
+
+/**
+ * Renderer stand-in with the real draw-scale rule: at fit, the fit; zoomed,
+ * fit × zoom capped at the preview's own resolution (`detail`), drawn 1.5×
+ * ahead and kept while sharp enough and at most 2× what is shown.
+ */
+function fakeRenderer(fit = 0.5, detail = 1) {
+  let zoom = 1;
+  let draw = fit;
+  let screen = 1;
+  let listener: (() => void) | null = null;
+  const next = () => {
+    if (zoom === 1) return fit;
+    const cap = Math.max(fit, detail);
+    const needed = Math.min(cap, fit * zoom);
+    if (draw >= needed && draw <= Math.min(cap, needed * 2)) return draw;
+    return Math.min(cap, needed * 1.5);
+  };
+  const renderer = {
+    getViewScales: () => ({ fit, draw }),
+    getImageRect: () => ({ left: 0, top: 0, width: 1600 * draw, height: 900 * draw }),
+    setScreenScale: (s: number) => {
+      screen = s;
+    },
+    getScreenScale: () => screen,
+    setViewZoom: vi.fn((z: number) => {
+      zoom = z;
+      return next() !== draw;
+    }),
+    render: vi.fn(() => {
+      draw = next();
+      listener?.();
+    }),
+    onRender: (l: (() => void) | null) => {
+      listener = l;
+    },
+  };
+  return renderer;
+}
+
+function setup(fit = 0.5, detail = 1) {
+  vi.useFakeTimers();
+  const area = document.createElement("div");
+  Object.defineProperty(area, "clientWidth", { value: 1000 });
+  Object.defineProperty(area, "clientHeight", { value: 700 });
+  const target = document.createElement("div");
+  area.appendChild(target);
+  document.body.appendChild(area);
+  const renderer = fakeRenderer(fit, detail);
+  const abort = new AbortController();
+  const onChange = vi.fn();
+  const view = createStageView({
+    area,
+    target,
+    renderer: renderer as unknown as CanvasRenderer,
+    spacePan: true,
+    onChange,
+    signal: abort.signal,
+  });
+  area.appendChild(view.root);
+  // The editor renders once on open; the view writes its readout from that.
+  renderer.render();
+  renderer.render.mockClear();
+  const label = () => view.root.querySelector(".rt-zoom__value")?.textContent;
+  const button = (name: string) =>
+    [...view.root.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => (b.getAttribute("aria-label") ?? b.textContent) === name,
+    );
+  const cleanup = () => {
+    abort.abort();
+    area.remove();
+    vi.useRealTimers();
+  };
+  return { area, target, renderer, view, onChange, label, button, cleanup };
+}
+
+describe("stage view", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("scales with CSS at once, then redraws sharp once input settles", () => {
+    const { target, renderer, view, label, area, cleanup } = setup();
+    view.zoomBy(2);
+    expect(label()).toBe("100%");
+    expect(transformOf(target)).toEqual({ x: 0, y: 0, scale: 2 });
+    expect(renderer.getScreenScale()).toBe(2);
+    expect(area.classList.contains("rt-stage--zoomed")).toBe(true);
+    expect(renderer.render).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(160);
+    expect(renderer.setViewZoom).toHaveBeenCalledWith(2);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    // Drawn at the new size: no CSS scale left.
+    expect(target.style.transform).toBe("");
+    expect(renderer.getScreenScale()).toBe(1);
+    cleanup();
+  });
+
+  it("draws ahead of the zoom, and redraws only when the canvas needs another size", () => {
+    const { target, renderer, view, cleanup } = setup(0.25, 2);
+    view.zoomBy(2); // needs 0.5: drawn at 0.75, shown at two thirds
+    vi.advanceTimersByTime(160);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    expect(transformOf(target)).toMatchObject({ x: 0, y: 0 });
+    expect(transformOf(target).scale).toBeCloseTo(0.5 / 0.75, 5);
+
+    view.zoomBy(1.4); // needs 0.7: the canvas is still sharp enough
+    vi.advanceTimersByTime(160);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+
+    view.zoomBy(0.5); // needs 0.35: the canvas is over twice that, so it shrinks
+    vi.advanceTimersByTime(160);
+    expect(renderer.render).toHaveBeenCalledTimes(2);
+    expect(renderer.getViewScales().draw).toBeCloseTo(0.525);
+    cleanup();
+  });
+
+  it("keeps the CSS scale past the preview's resolution", () => {
+    const { target, view, label, cleanup } = setup(0.5, 1);
+    view.zoomBy(4); // 200%: the canvas stops at 100%
+    vi.advanceTimersByTime(160);
+    expect(label()).toBe("200%");
+    expect(transformOf(target)).toEqual({ x: 0, y: 0, scale: 2 });
+    expect(target.style.getPropertyValue("--rt-view-scale")).toBe("2");
+    cleanup();
+  });
+
+  it("clamps between fit and 800%", () => {
+    const { view, label, button, cleanup } = setup(0.5);
+    view.zoomBy(0.5);
+    expect(label()).toBe("50%");
+    expect(button("Zoom out")?.disabled).toBe(true);
+    view.zoomBy(1000);
+    expect(label()).toBe("800%");
+    expect(button("Zoom in")?.disabled).toBe(true);
+    cleanup();
+  });
+
+  it("fits and shows actual pixels from the controls", () => {
+    const { label, button, target, cleanup } = setup(0.25);
+    button("1:1")?.click();
+    expect(label()).toBe("100%");
+    button("Fit to screen")?.click();
+    expect(label()).toBe("25%");
+    vi.advanceTimersByTime(160);
+    expect(target.style.transform).toBe("");
+    cleanup();
+  });
+
+  it("handles + / - / 0 and leaves other keys alone", () => {
+    const { view, label, cleanup } = setup(0.5);
+    const key = (k: string) => view.handleKey(new KeyboardEvent("keydown", { key: k }));
+    expect(key("+")).toBe(true);
+    expect(label()).toBe("63%");
+    expect(key("=")).toBe(true);
+    expect(key("-")).toBe(true);
+    expect(label()).toBe("63%");
+    expect(key("0")).toBe(true);
+    expect(label()).toBe("50%");
+    expect(key("x")).toBe(false);
+    cleanup();
+  });
+
+  /** A wheel event on `el`; jsdom has no wheelDeltaY, so a browser's value is set by hand. */
+  function wheelOn(el: Element, init: WheelEventInit & { wheelDeltaY?: number }): WheelEvent {
+    const { wheelDeltaY, ...rest } = init;
+    const e = new WheelEvent("wheel", { bubbles: true, cancelable: true, ...rest });
+    if (wheelDeltaY !== undefined) Object.defineProperty(e, "wheelDeltaY", { value: wheelDeltaY });
+    el.dispatchEvent(e);
+    return e;
+  }
+
+  it("zooms with ⌘/Ctrl + wheel", () => {
+    const { area, label, cleanup } = setup(0.5);
+    expect(wheelOn(area, { deltaY: -200, ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(label()).not.toBe("50%");
+    cleanup();
+  });
+
+  it("zooms a step for each notch of a mouse wheel, however few pixels it reports", () => {
+    const { area, label, cleanup } = setup(0.5);
+    const notch = (init: WheelEventInit & { wheelDeltaY?: number }): WheelEvent => {
+      const e = wheelOn(area, init);
+      vi.advanceTimersByTime(1000);
+      return e;
+    };
+    // A Mac reports a slow notch as about 4 px; elsewhere it's 100, or lines.
+    expect(notch({ deltaY: -4.000244, wheelDeltaY: 120 }).defaultPrevented).toBe(true);
+    expect(label()).toBe("63%");
+    notch({ deltaY: -100, wheelDeltaY: 120 });
+    expect(label()).toBe("78%");
+    notch({ deltaY: 3, deltaMode: 1 });
+    expect(label()).toBe("63%");
+    notch({ deltaY: 100 });
+    expect(label()).toBe("50%");
+    expect(notch({ deltaY: 100, wheelDeltaY: -120 }).defaultPrevented).toBe(true);
+    expect(label()).toBe("50%");
+    cleanup();
+  });
+
+  it("adds up notches that land while the last one is still easing in", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    const { area, label, cleanup } = setup(0.5);
+    wheelOn(area, { deltaY: -4, wheelDeltaY: 120 });
+    wheelOn(area, { deltaY: -4, wheelDeltaY: 120 });
+    expect(label()).toBe("50%");
+    vi.advanceTimersByTime(1000);
+    expect(label()).toBe("78%");
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("zooms for any vertical scroll, smooth-scrolling mice and trackpads included", () => {
+    const { area, label, cleanup } = setup(0.5);
+    expect(wheelOn(area, { deltaY: -40, wheelDeltaY: 120 }).defaultPrevented).toBe(true);
+    const once = label();
+    expect(once).not.toBe("50%");
+    wheelOn(area, { deltaY: -40.4, wheelDeltaY: 120 });
+    vi.advanceTimersByTime(1000);
+    expect(label()).not.toBe(once);
+    cleanup();
+  });
+
+  it("pans for a sideways scroll, and only when zoomed", () => {
+    const { view, area, target, label, cleanup } = setup(0.5);
+    wheelOn(area, { deltaX: 30, deltaY: 1 });
+    expect(label()).toBe("50%");
+    expect(target.style.transform).toBe("");
+    view.zoomBy(2);
+    vi.advanceTimersByTime(160);
+    const zoomed = label();
+    const before = target.style.transform;
+    expect(wheelOn(area, { deltaX: 30, deltaY: 1 }).defaultPrevented).toBe(true);
+    expect(target.style.transform).not.toBe(before);
+    expect(label()).toBe(zoomed);
+    cleanup();
+  });
+
+  it("holds the stage on its own layer until the zoom settles", () => {
+    const { view, target, cleanup } = setup(0.5);
+    view.zoomBy(2);
+    expect(target.style.willChange).toBe("transform");
+    vi.advanceTimersByTime(160);
+    expect(target.style.willChange).toBe("");
+    cleanup();
+  });
+
+  describe("dragging to pan", () => {
+    /** jsdom has no PointerEvent: a MouseEvent carrying a mouse pointer's fields. */
+    function mouse(el: Element, type: string, x = 0, y = 0, button = 0): MouseEvent {
+      const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button });
+      Object.assign(e, { pointerId: 1, pointerType: "mouse" });
+      el.dispatchEvent(e);
+      return e;
+    }
+    function onStage(target: HTMLElement, className: string): HTMLElement {
+      const el = document.createElement("div");
+      el.className = className;
+      target.append(el);
+      return el;
+    }
+
+    it("pans once a press on the photo has moved, and leaves a click alone", () => {
+      const { view, area, target, cleanup } = setup(0.5);
+      const photo = onStage(target, "lower-canvas");
+      view.zoomBy(2);
+      const before = target.style.transform;
+
+      mouse(photo, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 102, 101);
+      expect(target.style.transform).toBe(before);
+      expect(area.classList.contains("rt-stage--panning")).toBe(false);
+      mouse(area, "pointerup", 102, 101);
+      mouse(area, "pointermove", 140, 140);
+      expect(target.style.transform).toBe(before);
+
+      mouse(photo, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 110, 130);
+      expect(area.classList.contains("rt-stage--panning")).toBe(true);
+      expect(target.style.transform).not.toBe(before);
+      mouse(area, "pointerup", 110, 130);
+      expect(area.classList.contains("rt-stage--panning")).toBe(false);
+      cleanup();
+    });
+
+    it("never lets the browser start its own drag on the stage", () => {
+      const { view, area, target, cleanup } = setup(0.5);
+      const photo = onStage(target, "lower-canvas");
+      const chat = onStage(area, "rt-ai");
+      const dragStart = (from: Node): boolean => {
+        const e = new Event("dragstart", { bubbles: true, cancelable: true });
+        from.dispatchEvent(e);
+        return e.defaultPrevented;
+      };
+      view.zoomBy(2);
+
+      expect(dragStart(photo)).toBe(true);
+      // A selection's drag comes from its text.
+      expect(dragStart(photo.appendChild(document.createTextNode("23%")))).toBe(true);
+      expect(dragStart(chat.appendChild(document.createTextNode("a reply")))).toBe(false);
+      cleanup();
+    });
+
+    it("does nothing at fit", () => {
+      const { area, target, cleanup } = setup(0.5);
+      mouse(onStage(target, "lower-canvas"), "pointerdown", 100, 100);
+      mouse(area, "pointermove", 140, 140);
+      expect(area.classList.contains("rt-stage--panning")).toBe(false);
+      cleanup();
+    });
+
+    it("leaves a drag to the tool that claims it, and to the eyedropper", () => {
+      const { view, area, target, cleanup } = setup(0.5);
+      const photo = onStage(target, "lower-canvas");
+      const brush = onStage(target, "rt-liquify");
+      view.zoomBy(2);
+      const before = target.style.transform;
+
+      mouse(brush, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 140, 140);
+      expect(target.style.transform).toBe(before);
+      mouse(area, "pointerup", 140, 140);
+
+      area.classList.add("rt-editor__canvas-area--picking");
+      mouse(photo, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 140, 140);
+      expect(target.style.transform).toBe(before);
+      cleanup();
+    });
+
+    it("takes a crop frame's drag only while the frame covers the photo", () => {
+      const { view, area, target, cleanup } = setup(0.5);
+      const frame = onStage(target, "rt-crop__selection");
+      const handle = document.createElement("div");
+      handle.className = "rt-crop__handle";
+      frame.append(handle);
+      const heard = vi.fn();
+      frame.addEventListener("pointerdown", heard);
+      view.zoomBy(2);
+      const before = target.style.transform;
+
+      mouse(frame, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 140, 140);
+      mouse(area, "pointerup", 140, 140);
+      expect(heard).toHaveBeenCalledTimes(1);
+      expect(target.style.transform).toBe(before);
+
+      frame.classList.add("rt-crop__selection--full");
+      mouse(handle, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 140, 140);
+      mouse(area, "pointerup", 140, 140);
+      expect(heard).toHaveBeenCalledTimes(2);
+      expect(target.style.transform).toBe(before);
+
+      mouse(frame, "pointerdown", 100, 100);
+      mouse(area, "pointermove", 140, 140);
+      expect(heard).toHaveBeenCalledTimes(2);
+      expect(target.style.transform).not.toBe(before);
+      cleanup();
+    });
+
+    it("says how to move, once, when a tool covers the stage", () => {
+      const { view, area, target, cleanup } = setup(0.5);
+      const brush = onStage(target, "rt-liquify");
+      const hint = area.querySelector(".rt-zoom__hint") as HTMLElement;
+      const wide = { width: 500 } as DOMRect;
+      vi.spyOn(area, "getBoundingClientRect").mockReturnValue(wide);
+      vi.spyOn(brush, "getBoundingClientRect").mockReturnValue(wide);
+      document.elementFromPoint = () => brush;
+
+      view.zoomBy(2);
+      expect(hint.hidden).toBe(true);
+      vi.advanceTimersByTime(160);
+      expect(hint.hidden).toBe(false);
+      expect(hint.textContent).toBe("Hold Space and drag to move");
+      expect(hint.querySelector("kbd.rt-kbd")?.textContent).toBe("Space");
+      vi.advanceTimersByTime(4000);
+      expect(hint.hidden).toBe(true);
+
+      view.zoomBy(1.5);
+      vi.advanceTimersByTime(160);
+      expect(hint.hidden).toBe(true);
+      cleanup();
+      Reflect.deleteProperty(document, "elementFromPoint");
+    });
+
+    it("keeps quiet where a drag on the photo pans", () => {
+      const { view, area, target, cleanup } = setup(0.5);
+      const photo = onStage(target, "lower-canvas");
+      const hint = area.querySelector(".rt-zoom__hint") as HTMLElement;
+      document.elementFromPoint = () => photo;
+      view.zoomBy(2);
+      vi.advanceTimersByTime(160);
+      expect(hint.hidden).toBe(true);
+      cleanup();
+      Reflect.deleteProperty(document, "elementFromPoint");
+    });
+  });
+
+  it("says where it is, and goes where it's told without passing that on", () => {
+    const { area, renderer, view, label, cleanup } = setup(0.5);
+    const onView = vi.fn();
+    const other = createStageView({
+      area,
+      target: document.createElement("div"),
+      renderer: renderer as unknown as CanvasRenderer,
+      spacePan: false,
+      onChange: () => {},
+      onView,
+      signal: new AbortController().signal,
+    });
+    view.zoomBy(2);
+    other.setView(view.getView());
+    expect(other.getView()).toEqual(view.getView());
+    expect(onView).not.toHaveBeenCalled();
+    other.zoomBy(1.5);
+    expect(onView).toHaveBeenCalledTimes(1);
+    expect(label()).toBe("100%");
+    cleanup();
+  });
+
+  it("tells onView about zooming, not about a redraw", () => {
+    const { area, renderer, cleanup } = setup(0.5);
+    const onView = vi.fn();
+    const view = createStageView({
+      area,
+      target: document.createElement("div"),
+      renderer: renderer as unknown as CanvasRenderer,
+      spacePan: false,
+      onChange: () => {},
+      onView,
+      signal: new AbortController().signal,
+    });
+    renderer.render();
+    expect(onView).not.toHaveBeenCalled();
+    view.zoomBy(2);
+    expect(onView).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("comes back within the limit when the fit grows", () => {
+    let fit = 0.1;
+    let listener: (() => void) | null = null;
+    const area = document.createElement("div");
+    const abort = new AbortController();
+    const view = createStageView({
+      area,
+      target: document.createElement("div"),
+      renderer: {
+        getViewScales: () => ({ fit, draw: fit }),
+        getImageRect: () => ({ x: 0, y: 0, width: 1000 * fit, height: 1000 * fit }),
+        setViewZoom: () => false,
+        setScreenScale: () => {},
+        onRender: (next) => {
+          listener = next;
+        },
+        render: () => listener?.(),
+      },
+      spacePan: false,
+      onChange: () => {},
+      signal: abort.signal,
+    });
+    view.setView({ zoom: 80, x: 0, y: 0 });
+    expect(view.getView().zoom).toBe(80);
+    fit = 0.4;
+    (listener as unknown as () => void)();
+    expect(view.getView().zoom).toBe(20);
+    expect(view.root.querySelector(".rt-zoom__value")?.textContent).toBe("800%");
+    abort.abort();
+  });
+
+  it("leaves gestures on what it's told to ignore", () => {
+    const area = document.createElement("div");
+    const other = document.createElement("div");
+    other.className = "other";
+    const target = document.createElement("div");
+    area.append(other, target);
+    document.body.appendChild(area);
+    const abort = new AbortController();
+    const view = createStageView({
+      area,
+      target,
+      renderer: fakeRenderer(0.5, 1) as unknown as CanvasRenderer,
+      spacePan: false,
+      onChange: () => {},
+      ignore: ".other",
+      signal: abort.signal,
+    });
+    const wheel = (el: Element): boolean =>
+      el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100 }));
+    expect(wheel(other)).toBe(true);
+    expect(view.getView().zoom).toBe(1);
+    expect(wheel(target)).toBe(false);
+    abort.abort();
+    area.remove();
+  });
+
+  it("slides within the viewport it's given", () => {
+    const { area, renderer, cleanup } = setup(0.5);
+    const frame = document.createElement("div");
+    Object.defineProperty(frame, "clientWidth", { value: 300 });
+    Object.defineProperty(frame, "clientHeight", { value: 300 });
+    const target = document.createElement("div");
+    const view = createStageView({
+      area,
+      target,
+      renderer: renderer as unknown as CanvasRenderer,
+      spacePan: false,
+      onChange: () => {},
+      viewport: () => frame,
+      signal: new AbortController().signal,
+    });
+    view.setView({ zoom: 2, x: 0.9, y: 0 });
+    const shown = view.getView();
+    expect(shown.x).toBeGreaterThan(0);
+    expect(shown.x).toBeLessThan(0.9);
+    cleanup();
+  });
+
+  /** jsdom has no PointerEvent: a MouseEvent carrying a touch pointer's fields. */
+  function touch(el: Element, type: string, id: number, x: number, y: number): Event {
+    const e = Object.assign(
+      new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }),
+      { pointerId: id, pointerType: "touch" },
+    );
+    el.dispatchEvent(e);
+    return e;
+  }
+
+  it("pinches to zoom, and the tools hear neither finger until both lift", () => {
+    const { target, label, cleanup } = setup(0.5);
+    target.className = "rt-editor__canvas-container";
+    const heard = vi.fn();
+    document.addEventListener("pointermove", heard);
+    const tool = vi.fn();
+    target.addEventListener("pointerdown", tool);
+
+    touch(target, "pointerdown", 1, 100, 100);
+    expect(tool).toHaveBeenCalledTimes(1); // one finger is the tool's
+    const second = touch(target, "pointerdown", 2, 200, 100);
+    expect(tool).toHaveBeenCalledTimes(1); // the second never reaches it
+    expect(second.defaultPrevented).toBe(true);
+
+    touch(target, "pointermove", 2, 300, 100); // spread 100 → 200
+    expect(label()).toBe("100%");
+    touch(target, "pointerup", 2, 300, 100);
+    touch(target, "pointermove", 1, 120, 130); // still part of the pinch
+    expect(heard).not.toHaveBeenCalled();
+    touch(target, "pointerup", 1, 120, 130);
+    touch(target, "pointerdown", 3, 100, 100);
+    touch(target, "pointermove", 3, 102, 101);
+    expect(heard).toHaveBeenCalledTimes(1); // a fresh touch is the tools' again
+    document.removeEventListener("pointermove", heard);
+    cleanup();
+  });
+
+  it("pans with one finger on the photo once zoomed, and double-tap zooms in or fits", () => {
+    const { target, view, label, cleanup } = setup(0.5);
+    target.className = "rt-editor__canvas-container";
+    const tap = (id: number) => {
+      touch(target, "pointerdown", id, 400, 300);
+      touch(target, "pointerup", id, 400, 300);
+    };
+
+    touch(target, "pointerdown", 1, 100, 100);
+    touch(target, "pointermove", 1, 160, 130);
+    touch(target, "pointerup", 1, 160, 130);
+    expect(target.style.transform).toBe(""); // at fit, one finger doesn't pan
+
+    view.zoomBy(2);
+    vi.advanceTimersByTime(160);
+    touch(target, "pointerdown", 2, 100, 100);
+    touch(target, "pointermove", 2, 140, 120);
+    touch(target, "pointerup", 2, 140, 120);
+    expect(target.style.transform).toBe("translate(40px, 20px) scale(1)");
+
+    tap(3);
+    tap(4);
+    expect(label()).toBe("50%");
+    tap(5);
+    tap(6);
+    expect(label()).toBe("125%");
+    cleanup();
+  });
+
+  it("leaves touches on the tools' own handles alone", () => {
+    const { target, label, cleanup } = setup(0.5);
+    target.className = "rt-editor__canvas-container";
+    const handle = document.createElement("div");
+    handle.className = "rt-crop__handle";
+    target.appendChild(handle);
+    const tap = () => {
+      touch(handle, "pointerdown", 7, 400, 300);
+      touch(handle, "pointerup", 7, 400, 300);
+    };
+    tap();
+    tap();
+    expect(label()).toBe("50%");
+    cleanup();
+  });
+});
