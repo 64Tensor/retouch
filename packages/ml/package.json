@@ -1,6 +1,6 @@
 {
   "name": "@64tensor/retouch-ml",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "On-device ML tools for Rétouch: cutout, 4× upscale, erase, click-to-select, depth bokeh, denoise, face and object detection, video object tracking and OCR, through ONNX Runtime Web.",
   "author": "64Tensor LLC (https://64tensor.com)",
   "license": "MIT",
