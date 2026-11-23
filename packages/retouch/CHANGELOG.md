@@ -7,6 +7,13 @@ follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Up to 0.2.0 the packages were published as `@9tensor/retouch` and `@9tensor/retouch-ml`.
 
+## 0.4.0
+
+### Minor Changes
+
+- [`66f0e7c`](https://github.com/64Tensor/retouch/commit/66f0e7c402547fc4044b833be327f339c4b38608) Thanks [@64tensor-dev](https://github.com/64tensor-dev)! - The drop zone and gallery are dark by default, to match the editor. Set `theme: "light"` to keep
+  them light, as they were, or `theme: "auto"` to follow the OS.
+
 ## 0.3.0
 
 The first release from 64Tensor. The packages move to the `@64tensor` scope, and everything
