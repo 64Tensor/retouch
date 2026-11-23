@@ -18,12 +18,12 @@ can't restyle them by accident.
 ## Light, dark and auto
 
 ```ts
-const retouch = new Retouch({ target: "#editor", theme: "auto" });
-retouch.setTheme("dark");
+const retouch = new Retouch({ target: "#editor", theme: "light" });
+retouch.setTheme("auto");
 ```
 
-`theme` sets the shell: `"light"` (the default), `"dark"`, or `"auto"` to follow the operating
-system. Dark uses the darkroom's set. The editor is always dark, on purpose: a neutral, dim
+`theme` sets the shell: `"dark"` (the default), `"light"`, or `"auto"` to follow the operating
+system. Dark uses the darkroom's set, so by default the shell and the editor match. The editor is always dark, on purpose: a neutral, dim
 surround keeps color judgment honest. Its tokens can still be overridden like any others.
 
 ## Brand color

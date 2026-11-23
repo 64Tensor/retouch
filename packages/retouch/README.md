@@ -298,7 +298,7 @@ you want to change:
 
 The hover shade, the soft and glow washes, the focus ring, and accent-as-text
 all derive from `--rt-accent`; set any of them to tune it. The shell follows the
-`theme` option: `"light"` (default), `"dark"`, or `"auto"` to track the OS
+`theme` option: `"dark"` (default), `"light"`, or `"auto"` to track the OS
 setting; `setTheme()` switches it at runtime. The editor itself is always dark.
 
 **[Theming](docs/THEMING.md)** lists every token with its light and dark
@@ -422,7 +422,7 @@ new Retouch(options: RetouchOptions)
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `target` | `string \| HTMLElement` | — | CSS selector or element to mount into (throws if the selector matches nothing) |
-| `theme` | `"light" \| "dark" \| "auto"` | `"light"` | Drop zone and gallery color scheme; `"auto"` follows the OS — see [Theming](#theming) |
+| `theme` | `"dark" \| "light" \| "auto"` | `"dark"` | Drop zone and gallery color scheme; `"auto"` follows the OS — see [Theming](#theming) |
 | `maxFiles` | `number` | `Infinity` | Cap on the number of entries; extra files are rejected with reason `"count"` |
 | `acceptedTypes` | `string[]` | `["image/jpeg", "image/png", "image/webp"]` | Accepted image MIME types |
 | `acceptedVideoTypes` | `string[]` | `["video/mp4", "video/webm", "video/quicktime"]` | Accepted video MIME types; `[]` disables video |

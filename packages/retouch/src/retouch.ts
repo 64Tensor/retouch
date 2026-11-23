@@ -233,7 +233,7 @@ export class Retouch {
 
     injectStyles();
 
-    this.root = h("div", { class: "rt-root", "data-rt-theme": options.theme ?? "light" });
+    this.root = h("div", { class: "rt-root", "data-rt-theme": options.theme ?? "dark" });
     this.container.appendChild(this.root);
 
     // Feedback for rejected files, failed exports and undoable removals.

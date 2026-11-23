@@ -175,7 +175,7 @@ export interface RetouchOptions {
   /** Target DOM element or CSS selector to mount into. */
   target: string | HTMLElement;
   /**
-   * Drop zone and gallery color scheme: "light" (default), "dark", or
+   * Drop zone and gallery color scheme: "dark" (default), "light", or
    * "auto" to follow the OS setting. Switch later with `setTheme()`.
    */
   theme?: ShellTheme;
