@@ -39,7 +39,9 @@ jobs:
           commit-message: Version packages
           create-github-releases: true
         env:
-          NPM_CONFIG_PROVENANCE: "true"
+          # changeset publish runs pnpm publish, and pnpm 12 reads settings only from PNPM_CONFIG_*
+          # variables. 0.3.0 went out with NPM_CONFIG_PROVENANCE, which pnpm ignored, so unsigned.
+          PNPM_CONFIG_PROVENANCE: "true"
           # npm sets up trusted publishing only for packages that exist, so the first publish,
           # which creates them, signs in with a short-lived token kept in the npm environment.
           # Once trusted publishing is set up, the secret is deleted and this is empty.
