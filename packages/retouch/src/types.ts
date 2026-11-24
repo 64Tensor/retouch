@@ -56,22 +56,58 @@ export interface AiRequest {
   schema: Record<string, unknown>;
 }
 
+/** What Ask AI says when no model is connected: see `AiOptions.notice`. */
+export interface AiNotice {
+  /** One or two sentences: why Ask AI can't run yet, and how to change that. */
+  text: string;
+  /**
+   * Ways forward, under the text. Each opens in a new tab, so the photo being
+   * edited stays open. Without an `href` the label shows as plain text, with
+   * its note ("coming soon").
+   */
+  links?: { label: string; href?: string; note?: string }[];
+}
+
 export interface AiOptions {
   /**
-   * Anthropic API key. Browser-visible — fine for prototypes; production
-   * should proxy via `baseUrl` or `complete` instead.
+   * Which wire format the built-in call speaks:
+   * - `"anthropic"` (default): Anthropic's Messages API.
+   * - `"openai"`: any OpenAI-compatible Chat Completions API: Ollama, LM
+   *   Studio, llama.cpp, vLLM and most hosted providers. Set `baseUrl` to the
+   *   API root, `/v1` included, and `model` to the model's name.
+   */
+  provider?: "anthropic" | "openai";
+  /**
+   * The provider's API key. Browser-visible — fine for prototypes; production
+   * should proxy via `baseUrl` or `complete` instead. A local OpenAI-compatible
+   * server (Ollama, LM Studio) needs none.
    */
   apiKey?: string;
-  /** Model ID. Defaults to "claude-haiku-5-5". */
+  /** Model ID. Defaults to "claude-haiku-5-5" for Anthropic; required for `"openai"`. */
   model?: string;
-  /** API origin override (e.g. your server-side proxy). */
+  /**
+   * API origin override (e.g. your server-side proxy). For `"openai"`, the API
+   * root such as "http://localhost:11434/v1" (Ollama); it defaults to OpenAI's.
+   */
   baseUrl?: string;
   /** Attach a downscaled frame so content-aware commands work. Defaults to true. */
   sendImage?: boolean;
-  /** Show an "Add API key" popover storing the end user's key in localStorage. */
+  /**
+   * Show an "Add API key" popover storing the end user's key in localStorage.
+   * Ask AI then sends the prompt, and a downscaled copy of the photo, from the
+   * user's browser straight to the provider.
+   */
   allowUserKey?: boolean;
-  /** Custom transport replacing the built-in Anthropic call. Must resolve to the raw edit-operations object. */
+  /** Custom transport replacing the built-in call. Must resolve to the raw edit-operations object. */
   complete?: (request: AiRequest) => Promise<unknown>;
+  /**
+   * Show Ask AI even without a model: its panel says this, with links, instead
+   * of taking commands, and sends nothing anywhere. For apps that ship without
+   * a model and tell people how to connect one. Ignored once a model is
+   * connected (`apiKey`, `complete`, or `"openai"` with a `baseUrl`) and when
+   * `allowUserKey` is on.
+   */
+  notice?: string | AiNotice;
 }
 
 /** Validated, clamped edit operations produced by the AI command bar. */

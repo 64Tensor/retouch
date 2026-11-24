@@ -1,4 +1,5 @@
-import type { AiOptions } from "../../types";
+import { hasModel } from "../../ai/interpreter";
+import type { AiNotice, AiOptions } from "../../types";
 import { h } from "../h";
 import { ICON_CLOSE, ICON_SEND, ICON_SPARKLE } from "../icons";
 import { keyTip } from "../key-tip";
@@ -20,6 +21,11 @@ export interface AiChatOptions {
   onSubmit: (prompt: string) => Promise<AiReply>;
   /** One-tap prompts shown above the input. */
   suggestions?: string[];
+  /**
+   * No model is connected: the panel shows this instead of the input, and
+   * takes no commands.
+   */
+  notice?: AiNotice;
 }
 
 export interface AiChatHandle {
@@ -40,6 +46,28 @@ export function getStoredAiKey(): string | null {
   } catch {
     return null;
   }
+}
+
+/** The notice's text and its ways forward, which open in a new tab so the edit stays open. */
+function noticeBlock(notice: AiNotice): HTMLElement {
+  const block = h(
+    "div",
+    { class: "rt-ai__notice" },
+    h("p", { class: "rt-ai__notice-text" }, notice.text),
+  );
+  if (notice.links?.length) {
+    const list = h("ul", { class: "rt-ai__notice-links" });
+    for (const link of notice.links) {
+      const label = link.href
+        ? h("a", { href: link.href, target: "_blank", rel: "noopener" }, link.label)
+        : h("span", { class: "rt-ai__notice-label" }, link.label);
+      const item = h("li", null, label);
+      if (link.note) item.appendChild(h("span", { class: "rt-ai__notice-note" }, link.note));
+      list.appendChild(item);
+    }
+    block.appendChild(list);
+  }
+  return block;
 }
 
 /**
@@ -83,7 +111,8 @@ export function createAiChat(options: AiChatOptions): AiChatHandle {
     { class: "rt-ai__empty" },
     "Describe an edit — “moody and cinematic, crop to a square”. Each one lands as a single step you can undo, and follow-ups refine it.",
   );
-  messages.appendChild(empty);
+  const { notice } = options;
+  messages.appendChild(notice ? noticeBlock(notice) : empty);
 
   // One-tap prompts: a way in for people who don't know what to ask.
   const suggestions = h("div", {
@@ -119,13 +148,14 @@ export function createAiChat(options: AiChatOptions): AiChatHandle {
   keyTip(sendBtn, "Apply", "Enter", signal);
   const form = h("div", { class: "rt-ai__form" }, input, sendBtn);
 
+  // With a notice there's nothing to send, so no suggestions and no input, and the panel fits
+  // the notice instead of keeping room for a conversation.
   const panel = h(
     "div",
-    { class: "rt-ai__panel" },
+    { class: notice ? "rt-ai__panel rt-ai__panel--notice" : "rt-ai__panel" },
     header,
     messages,
-    ...(options.suggestions?.length ? [suggestions] : []),
-    form,
+    ...(notice ? [] : [...(options.suggestions?.length ? [suggestions] : []), form]),
   );
   const root = h("div", { class: "rt-ai" }, panel, trigger);
 
@@ -142,7 +172,11 @@ export function createAiChat(options: AiChatOptions): AiChatHandle {
   function open(): void {
     root.classList.add("rt-ai--open");
     // Without preventScroll, focusing scrolls the stage (it clips, but can scroll).
-    input.focus({ preventScroll: true });
+    // A notice has no input, so its first link (or the close button) takes focus.
+    const target = notice
+      ? (messages.querySelector<HTMLElement>(".rt-ai__notice a") ?? closeBtn)
+      : input;
+    target.focus({ preventScroll: true });
     messages.scrollTop = messages.scrollHeight;
   }
 
@@ -230,16 +264,17 @@ export function createAiChat(options: AiChatOptions): AiChatHandle {
   // ── Key popover (end-user supplied key) ──
 
   function needsKeyEntry(): boolean {
-    return !options.ai.complete && !options.ai.apiKey && !getStoredAiKey();
+    return !hasModel(options.ai) && !getStoredAiKey();
   }
 
   function showKeyPopover(): void {
     if (root.querySelector(".rt-ai__popover")) return;
+    const anthropic = options.ai.provider !== "openai";
     const keyInput = h("input", {
       type: "password",
       class: "rt-ai__key-input",
-      placeholder: "sk-ant-…",
-      "aria-label": "Anthropic API key",
+      placeholder: anthropic ? "sk-ant-…" : "sk-…",
+      "aria-label": anthropic ? "Anthropic API key" : "API key",
     }) as HTMLInputElement;
     const saveBtn = h("button", { class: "rt-ai__save" }, "Save");
     const popover = h(
@@ -248,7 +283,7 @@ export function createAiChat(options: AiChatOptions): AiChatHandle {
       h(
         "div",
         { class: "rt-ai__popover-text" },
-        "Paste an Anthropic API key to enable AI edits. Stored only in this browser (localStorage) — don't use a production key.",
+        `Paste ${anthropic ? "an Anthropic" : "an"} API key to enable AI edits. It's stored only in this browser (localStorage), and each edit sends your words and a small copy of the photo straight to the provider. Don't use a production key.`,
       ),
       h("div", { class: "rt-ai__popover-row" }, keyInput, saveBtn),
     );

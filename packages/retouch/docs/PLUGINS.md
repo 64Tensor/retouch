@@ -341,7 +341,7 @@ for a tool whose stages are worth naming. `ctx.reveal(result)` takes a canvas or
 over the stage with the photo's current look, and wipes it in. It resolves when the wipe ends,
 with a function that takes the result back off; it's instant under reduced motion, and skipped
 while a crop or warp means the result wouldn't line up. `@64tensor/retouch-ml` is built this
-way, and its [plugin.ts](../packages/ml/src/plugin.ts) is a full example.
+way, and its [plugin.ts](../../ml/src/plugin.ts) is a full example.
 
 ### Background work
 

@@ -1,5 +1,5 @@
 import type { AiContext } from "../../ai/interpreter";
-import { interpretCommand } from "../../ai/interpreter";
+import { hasModel, interpretCommand, noticeFor } from "../../ai/interpreter";
 import {
   createDefaultCurves,
   createDefaultHsl,
@@ -2036,9 +2036,13 @@ export function createEditor(options: EditorOptions): EditorHandle {
 
   let aiChat: AiChatHandle | null = null;
   const aiOptions = options.ai;
-  if (aiOptions && (aiOptions.apiKey || aiOptions.complete || aiOptions.allowUserKey)) {
+  // Ask AI shows when a model is connected, when the user may add a key, or
+  // when the host gave a notice to show instead (which sends nothing).
+  const aiNotice = aiOptions ? noticeFor(aiOptions) : undefined;
+  if (aiOptions && (hasModel(aiOptions) || aiOptions.allowUserKey || aiNotice)) {
     aiChat = createAiChat({
       ai: aiOptions,
+      notice: aiNotice,
       suggestions:
         entry.kind === "video"
           ? [

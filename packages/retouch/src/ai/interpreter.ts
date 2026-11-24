@@ -2,6 +2,7 @@ import { ASPECT_RATIOS, MIN_TRIM_DURATION } from "../constants";
 import type {
   Adjustments,
   AiEditOps,
+  AiNotice,
   AiOptions,
   AiRequest,
   AspectRatioPreset,
@@ -30,6 +31,9 @@ export interface AiContext {
 
 const DEFAULT_MODEL = "claude-haiku-5-5";
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const TOOL_NAME = "apply_edits";
+const TOOL_DESCRIPTION = "Apply the requested edits to the current media.";
 const FILTER_IDS = FILTER_PRESETS.map((p) => p.id);
 const ASPECT_IDS = Object.keys(ASPECT_RATIOS).filter((id) => id !== "free");
 const ORIENTATIONS = [0, 90, 180, 270];
@@ -340,7 +344,38 @@ export function validateAiOps(raw: unknown, context: AiContext): AiEditOps {
   return ops;
 }
 
+// ── Connection ────────────────────────────────
+
+/**
+ * Whether these options connect a model, so Ask AI can take commands. A local
+ * OpenAI-compatible server needs a `baseUrl` but no key.
+ */
+export function hasModel(options: AiOptions): boolean {
+  return Boolean(
+    options.complete || options.apiKey || (options.provider === "openai" && options.baseUrl),
+  );
+}
+
+/** The notice to show instead of the chat, when no model is connected and none can be added. */
+export function noticeFor(options: AiOptions): AiNotice | undefined {
+  if (!options.notice || hasModel(options) || options.allowUserKey) return undefined;
+  return typeof options.notice === "string" ? { text: options.notice } : options.notice;
+}
+
 // ── Transport ─────────────────────────────────
+
+/** The message in a failed response's body, if it has one, or the status. */
+async function failure(response: Response): Promise<Error> {
+  let message = `AI request failed (${response.status})`;
+  try {
+    const body = (await response.json()) as { error?: string | { message?: string } };
+    const detail = typeof body.error === "string" ? body.error : body.error?.message;
+    if (detail) message = detail;
+  } catch {
+    // keep the status message
+  }
+  return new Error(`[Retouch] ${message}`);
+}
 
 interface AnthropicContentBlock {
   type: string;
@@ -374,32 +409,88 @@ async function callAnthropic(options: AiOptions, request: AiRequest): Promise<un
       max_tokens: 1024,
       system: request.system,
       messages: [{ role: "user", content }],
-      tools: [
-        {
-          name: "apply_edits",
-          description: "Apply the requested edits to the current media.",
-          input_schema: request.schema,
-        },
-      ],
-      tool_choice: { type: "tool", name: "apply_edits" },
+      tools: [{ name: TOOL_NAME, description: TOOL_DESCRIPTION, input_schema: request.schema }],
+      tool_choice: { type: "tool", name: TOOL_NAME },
     }),
   });
 
-  if (!response.ok) {
-    let message = `AI request failed (${response.status})`;
-    try {
-      const body = (await response.json()) as { error?: { message?: string } };
-      if (body.error?.message) message = body.error.message;
-    } catch {
-      // keep the status message
-    }
-    throw new Error(`[Retouch] ${message}`);
-  }
+  if (!response.ok) throw await failure(response);
 
   const data = (await response.json()) as { content?: AnthropicContentBlock[] };
-  const toolUse = data.content?.find((b) => b.type === "tool_use" && b.name === "apply_edits");
+  const toolUse = data.content?.find((b) => b.type === "tool_use" && b.name === TOOL_NAME);
   if (!toolUse) throw new Error("[Retouch] AI returned no edit operations");
   return toolUse.input;
+}
+
+interface OpenAiMessage {
+  content?: string | null;
+  tool_calls?: { type?: string; function?: { name?: string; arguments?: string } }[];
+}
+
+/** JSON from a model's text, with or without a ```json fence around it. */
+function parseJson(text: string): unknown {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
+  try {
+    return JSON.parse((fenced?.[1] ?? text).trim());
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Any OpenAI-compatible Chat Completions API: Ollama, LM Studio, llama.cpp,
+ * vLLM and most providers. The schema goes as a forced function call; a model
+ * that answers in plain JSON instead is accepted too, since some local models
+ * do.
+ */
+async function callOpenAi(options: AiOptions, request: AiRequest): Promise<unknown> {
+  if (!options.model) {
+    throw new Error("[Retouch] Set ai.model to the name of the model to use");
+  }
+  const base = (options.baseUrl ?? DEFAULT_OPENAI_BASE_URL).replace(/\/+$/, "");
+
+  // Text alone goes as a plain string, which text-only servers accept too.
+  const content = request.imageBase64
+    ? [
+        {
+          type: "image_url",
+          image_url: { url: `data:image/jpeg;base64,${request.imageBase64}` },
+        },
+        { type: "text", text: request.prompt },
+      ]
+    : request.prompt;
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
+
+  const response = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: options.model,
+      messages: [
+        { role: "system", content: request.system },
+        { role: "user", content },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: { name: TOOL_NAME, description: TOOL_DESCRIPTION, parameters: request.schema },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: TOOL_NAME } },
+    }),
+  });
+
+  if (!response.ok) throw await failure(response);
+
+  const data = (await response.json()) as { choices?: { message?: OpenAiMessage }[] };
+  const message = data.choices?.[0]?.message;
+  const call = message?.tool_calls?.find((c) => c.function?.name === TOOL_NAME);
+  const raw = call?.function?.arguments ?? message?.content;
+  const ops = typeof raw === "string" ? parseJson(raw) : undefined;
+  if (!ops) throw new Error("[Retouch] AI returned no edit operations");
+  return ops;
 }
 
 /** Interpret a natural-language command into validated edit operations. */
@@ -415,6 +506,10 @@ export async function interpretCommand(
     imageBase64,
     schema: buildSchema(context),
   };
-  const raw = ai.complete ? await ai.complete(request) : await callAnthropic(ai, request);
+  const raw = ai.complete
+    ? await ai.complete(request)
+    : ai.provider === "openai"
+      ? await callOpenAi(ai, request)
+      : await callAnthropic(ai, request);
   return validateAiOps(raw, context);
 }
