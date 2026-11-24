@@ -29,3 +29,40 @@ jobs:
       # Typecheck, lint, test, build, then check the packed tarballs.
       - run: pnpm verify
       - run: pnpm --filter playground build
+
+  desktop:
+    # The Mac app's tests, through Playwright's Electron support. Electron runs the same window on
+    # Linux, under a virtual display; what only a Mac has (the Keychain) is tested on the Mac.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Ubuntu's AppArmor otherwise stops Chromium's sandbox from starting.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: pnpm --filter desktop build
+      - run: xvfb-run -a pnpm --filter desktop test
+
+  desktop-dmg:
+    # The DMGs, one for Apple silicon and one for Intel. Unsigned until 64Tensor LLC's Developer ID
+    # is set up, so macOS warns before opening them. Kept a week, to try a pull request's app.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter desktop dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retouch-mac
+          path: desktop/release/*.dmg
+          retention-days: 7
+          if-no-files-found: error

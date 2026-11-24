@@ -48,6 +48,16 @@ export function loadOrt(): Promise<typeof Ort> {
 
 let defaultApplied = false;
 let runtimeConfigured = false;
+/** Where the binaries load from when a tool's options don't say: set by installMlTools. */
+let sharedWasmPaths: string | undefined;
+
+/**
+ * Load ORT's .wasm binaries from `wasmPaths` for every session that doesn't name its own,
+ * instead of from jsDelivr. installMlTools calls this with its `wasmPaths` option.
+ */
+export function setWasmPaths(wasmPaths: string | undefined): void {
+  sharedWasmPaths = wasmPaths;
+}
 
 function configure(ort: typeof Ort, options: RuntimeOptions): void {
   if (!runtimeConfigured) {
@@ -64,9 +74,10 @@ function configure(ort: typeof Ort, options: RuntimeOptions): void {
     // through the promise rejection our fallback handles.
     ort.env.logLevel = "error";
   }
-  if (options.wasmPaths) {
+  const wasmPaths = options.wasmPaths ?? sharedWasmPaths;
+  if (wasmPaths) {
     // Explicit paths always apply, no matter which tool configured first.
-    ort.env.wasm.wasmPaths = options.wasmPaths;
+    ort.env.wasm.wasmPaths = wasmPaths;
     defaultApplied = true;
     return;
   }

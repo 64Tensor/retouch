@@ -166,6 +166,7 @@ installMlTools(retouch, {
   text:    { detectorUrl, recognizerUrl, dictionaryUrl, maxSide: 1280, minScore: 0.5 },
   track:   { fps: 6, minSize: 0.04, scoreThreshold: 0.35, matchThreshold: 0.2 }, // YOLOX + tracker
   depth:   { modelUrl },
+  wasmPaths: "https://your.cdn/ort/",                 // ONNX Runtime's binaries, for every tool
   openResults: true,
 });
 ```
@@ -175,7 +176,8 @@ one AI launcher on the editor's rail, and its menu lists each with a line on
 what it does and its download size. Every option
 group also accepts the runtime options below (`wasmPaths`,
 `executionProviders`, `externalDataUrl`, `onDownloadProgress`).
-`openResults` (default `true`) opens results that land in the gallery —
+`wasmPaths` at the top level sets where ONNX Runtime's `.wasm` binaries
+load from for all nine (see Self-hosting). `openResults` (default `true`) opens results that land in the gallery —
 Upscale, and Select's **Cut out** — in the editor as soon as they finish; pass
 `false` to leave them in the gallery quietly.
 
@@ -187,7 +189,8 @@ stay fully first-party, host both yourself:
 
 ```ts
 installMlTools(retouch, {
-  cutout: { modelUrl: "https://your.cdn/models/modnet.onnx", wasmPaths: "https://your.cdn/ort/" },
+  wasmPaths: "https://your.cdn/ort/",
+  cutout: { modelUrl: "https://your.cdn/models/modnet.onnx" },
   upscale: { modelUrl: "https://your.cdn/models/realesrgan-x4plus.onnx" },
   erase: { modelUrl: "https://your.cdn/models/lama_fp32.onnx" },
   detect: {
@@ -213,8 +216,10 @@ Default model URLs are pinned to a commit of the repo that serves them, so a
 later change there can never alter what your users download; the
 `DEFAULT_*_MODEL_URL` constants expose them. Except for UltraFace, those repos
 are third-party ONNX conversions or mirrors, not the model authors' own.
-`wasmPaths` is page-global —
-setting it in any tool's options applies to every session. `executionProviders`
+For `wasmPaths`, host the `.wasm` files from the `dist/` folder of the
+`onnxruntime-web` you install, under the same names. It's page-global: set in
+one tool's options instead of at the top level, it applies to every session
+too. `executionProviders`
 (default `["webgpu", "wasm"]`) sets the preference order; a run that fails on
 WebGPU retries on WASM automatically.
 

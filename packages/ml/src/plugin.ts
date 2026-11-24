@@ -76,6 +76,7 @@ import {
   recognizeText,
   type TextLine,
 } from "./ocr";
+import { setWasmPaths } from "./runtime";
 import {
   candidateMask,
   DEFAULT_SAM_DECODER_URL,
@@ -117,6 +118,12 @@ export interface MlToolsOptions {
    * so the outcome is visible immediately. Defaults to true.
    */
   openResults?: boolean;
+  /**
+   * The directory ONNX Runtime's .wasm binaries load from, for every tool: copy them from
+   * `onnxruntime-web/dist` and serve them yourself to stay first-party. Defaults to jsDelivr.
+   * A tool's own `wasmPaths` still wins.
+   */
+  wasmPaths?: string;
 }
 
 // ── Models: what each tool downloads, and how that's said ────────────────
@@ -423,6 +430,7 @@ const FOLLOW: Record<Follow, readonly string[] | undefined> = {
 export function installMlTools(retouch: Retouch, options: MlToolsOptions = {}): void {
   const ctor = retouch.constructor as typeof Retouch;
   const openResults = options.openResults !== false;
+  if (options.wasmPaths) setWasmPaths(options.wasmPaths);
 
   /** The entry's own format: JPEG stays JPEG, everything else keeps alpha as PNG. */
   const typeOf = (ctx: ToolContext): string =>

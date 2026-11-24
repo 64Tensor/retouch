@@ -26,6 +26,7 @@ pnpm verify           # all of the above, in the order CI runs them
 packages/retouch/     @64tensor/retouch: src/, tests/, docs/ (shipped in the package)
 packages/ml/          @64tensor/retouch-ml: src/, tests/, the model notices
 playground/           a bare page that mounts the editor, for development
+desktop/              Rétouch for the Mac (Electron): see desktop/README.md
 scripts/smoke.mjs     the packed-tarball checks; scripts/sync-version.mjs keeps VERSION in step
 .changeset/           pending changelog entries
 ```

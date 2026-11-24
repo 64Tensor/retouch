@@ -137,6 +137,34 @@ describe("the OpenAI-compatible transport", () => {
     await expect(interpretCommand(ai, "x", CTX)).rejects.toThrow("does not support tools");
   });
 
+  it("goes through the host's fetch when it gives one, for either provider", async () => {
+    const global = respond(toolCall({ explanation: "x" }));
+    const own = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify(toolCall({ explanation: "Through the host" })), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const ops = await interpretCommand(
+      { provider: "openai", baseUrl: "http://localhost:11434/v1", model: "m", fetch: own },
+      "x",
+      CTX,
+    );
+    expect(ops.explanation).toBe("Through the host");
+    expect(own.mock.calls[0]?.[0]).toBe("http://localhost:11434/v1/chat/completions");
+
+    own.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "tool_use", name: "apply_edits", input: { explanation: "Claude" } }],
+        }),
+      ),
+    );
+    await interpretCommand({ apiKey: "sk-ant-x", fetch: own }, "x", CTX);
+    expect(own.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(global).not.toHaveBeenCalled();
+  });
+
   it("asks for a model name rather than guessing one", async () => {
     const fetch = respond(toolCall({ explanation: "x" }));
     await expect(

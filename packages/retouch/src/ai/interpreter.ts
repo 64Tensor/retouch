@@ -383,6 +383,11 @@ interface AnthropicContentBlock {
   input?: unknown;
 }
 
+/** A built-in call's request, through the host's `fetch` when it gives one. */
+function send(options: AiOptions, url: string, init: RequestInit): Promise<Response> {
+  return options.fetch ? options.fetch(url, init) : fetch(url, init);
+}
+
 async function callAnthropic(options: AiOptions, request: AiRequest): Promise<unknown> {
   const key = options.apiKey;
   if (!key) throw new Error("[Retouch] No AI API key configured");
@@ -396,7 +401,7 @@ async function callAnthropic(options: AiOptions, request: AiRequest): Promise<un
   }
   content.push({ type: "text", text: request.prompt });
 
-  const response = await fetch(`${options.baseUrl ?? DEFAULT_BASE_URL}/v1/messages`, {
+  const response = await send(options, `${options.baseUrl ?? DEFAULT_BASE_URL}/v1/messages`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -463,7 +468,7 @@ async function callOpenAi(options: AiOptions, request: AiRequest): Promise<unkno
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
 
-  const response = await fetch(`${base}/chat/completions`, {
+  const response = await send(options, `${base}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify({

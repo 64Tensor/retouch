@@ -1,0 +1,26 @@
+{
+  "name": "desktop",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Rétouch for the Mac: the editor and its ML tools in a window of their own, with the model you choose. Not published to npm; the DMGs ship on GitHub Releases.",
+  "author": "64Tensor LLC (https://64tensor.com)",
+  "license": "MIT",
+  "homepage": "https://64tensor.com/retouch",
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "vite build && tsdown",
+    "start": "pnpm build && electron .",
+    "dist": "pnpm build && electron-builder --mac --config electron-builder.config.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@64tensor/retouch": "workspace:*",
+    "@64tensor/retouch-ml": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0",
+    "vite": "8.3.8"
+  }
+}
