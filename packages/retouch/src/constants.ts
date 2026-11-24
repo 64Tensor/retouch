@@ -8,7 +8,7 @@ import type {
   VideoEdits,
 } from "./types";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 export const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
