@@ -6238,6 +6238,68 @@ body:has(> .rt-editor-overlay) .rt-toast:not(.rt-toast--visible) {
   color: var(--rt-text-3);
 }
 
+/* No model connected: the host's notice, and its ways forward. The panel is
+   as tall as the notice, on phones too. */
+.rt-ai__panel.rt-ai__panel--notice {
+  height: auto;
+  min-height: 0;
+  resize: none;
+}
+
+.rt-ai__notice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--rt-text-2);
+}
+
+.rt-ai__notice-text {
+  margin: 0;
+}
+
+.rt-ai__notice-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rt-ai__notice-links li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.rt-ai__notice-links a {
+  color: var(--rt-accent-text);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 2px;
+}
+
+.rt-ai__notice-links a:hover {
+  text-decoration: underline;
+}
+
+.rt-ai__notice-links a:focus-visible {
+  outline: 2px solid var(--rt-focus);
+  outline-offset: 2px;
+}
+
+.rt-ai__notice-label {
+  color: var(--rt-text-1);
+  font-weight: 600;
+}
+
+.rt-ai__notice-note {
+  color: var(--rt-text-3);
+}
+
 .rt-ai__msg {
   max-width: 88%;
   padding: 7px 11px;

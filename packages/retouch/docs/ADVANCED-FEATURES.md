@@ -9,9 +9,9 @@ default URL is pinned to a commit of the repo that serves it, so a later push
 there can never change what users download; bumping a pin is a deliberate,
 reviewed change. Nine of the ten pinned sources are third-party conversions or
 mirrors, not the model author's own repo.
-[`third-party-models.json`](../packages/ml/third-party-models.json) records each
+[`third-party-models.json`](../../ml/third-party-models.json) records each
 one's author repo, pin, SHA-256, license evidence and training data, and
-[`THIRD_PARTY_NOTICES.md`](../packages/ml/THIRD_PARTY_NOTICES.md) carries the
+[`THIRD_PARTY_NOTICES.md`](../../ml/THIRD_PARTY_NOTICES.md) carries the
 copyright lines and license texts.
 
 ## License verdicts (checked at source)

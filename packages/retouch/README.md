@@ -307,6 +307,11 @@ motion.
 
 ### AI edits
 
+**Rétouch ships without a language model.** Ask AI needs one, and you choose it: a model on
+your own computer (Ollama, LM Studio, llama.cpp), your own provider, or your own server.
+Without one, nothing is sent anywhere, and the rest of the editor works the same.
+**[Connecting a model](docs/AI.md)** shows each way.
+
 A **✦ Ask AI** pill sits at the top-right of the stage — click it (or press
 **⌘K**) and it opens a vertical chat panel. Type what you want — *"moody and
 cinematic, crop to a square"*, *"rotate it upright and speed it up 2×"* — and a
@@ -315,24 +320,28 @@ tools use, applied as a single undoable step. Each reply is a card listing what
 it set — "Contrast +15", "Warm filter", "Crop" — with an **Undo** for exactly
 that step, and suggestion chips ("Warmer light", "Black and white") get people
 started. Prompts and replies stay in the thread, so follow-ups ("a bit warmer",
-"undo the crop") read as a conversation. Token-gated and off by default:
+"undo the crop") read as a conversation. Off until you connect a model:
 
 ```ts
 new Retouch({
   target: "#editor",
-  ai: { apiKey: "sk-ant-…" },              // dev/prototype: browser-direct Anthropic call
-  // ai: { baseUrl: "https://your-proxy" } // production: same wire format via your server
-  // ai: { complete: async (req) => {...} }// or fully custom transport
-  // ai: { allowUserKey: true }            // or let end users paste their own key
+  // A model on the user's computer: Ollama, LM Studio, llama.cpp. Nothing leaves it.
+  ai: { provider: "openai", baseUrl: "http://localhost:11434/v1", model: "mistral-small3.1" },
+  // ai: { baseUrl: "https://your-proxy" }  // production: Anthropic's wire format via your server
+  // ai: { complete: async (req) => {...} } // or fully custom transport
+  // ai: { apiKey: "sk-ant-…" }             // prototype: browser-direct Anthropic call
+  // ai: { allowUserKey: true }             // or let end users paste their own key
+  // ai: { notice: "Ask AI needs a model…" } // no model yet: say how to get one
 });
 ```
 
-Defaults to `claude-haiku-5-5` with a downscaled frame attached for
-content-aware commands ("crop to the dog"). Every model-returned value is
-validated and clamped through the same primitives the manual tools use before
-it touches edit state. Browser-visible API keys are prototype-grade — proxy
-via `baseUrl` or `complete` in production. Events: `ai:start`, `ai:applied`,
-`ai:error`.
+Anthropic calls default to `claude-haiku-5-5`; `provider: "openai"` speaks any
+OpenAI-compatible API. A downscaled frame goes with each command for
+content-aware edits ("crop to the dog"); `sendImage: false` turns it off for
+text-only models. Every model-returned value is validated and clamped through
+the same primitives the manual tools use before it touches edit state.
+Browser-visible API keys are prototype-grade — proxy via `baseUrl` or
+`complete` in production. Events: `ai:start`, `ai:applied`, `ai:error`.
 
 <br />
 

@@ -6,6 +6,7 @@ export { Retouch } from "./retouch";
 export type {
   Adjustments,
   AiEditOps,
+  AiNotice,
   AiOptions,
   AiRequest,
   AppState,
