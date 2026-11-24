@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [[`8e50f89`](https://github.com/64Tensor/retouch/commit/8e50f89cae626da4d8acb04ef939b305123d44fb)]:
+  - @64tensor/retouch@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes

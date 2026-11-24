@@ -1,6 +1,6 @@
 {
   "name": "@64tensor/retouch",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Rétouch: a drop-in, canvas-based image and video editor for the browser. Crop, adjust, filters, curves, masks, trim, AI edits and your own tools.",
   "author": "64Tensor LLC (https://64tensor.com)",
   "license": "MIT",
