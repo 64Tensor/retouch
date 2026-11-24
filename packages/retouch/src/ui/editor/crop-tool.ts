@@ -186,8 +186,7 @@ export function createCropTool(options: CropToolOptions): CropToolHandle {
       return shapeOutline({ points: path, smooth: mode === "lasso" });
     }
     if (plainFrame() && !shapeOptions.invert) return null;
-    const img = renderer.getImageRect();
-    const aspect = img.height > 0 ? img.width / img.height : 1;
+    const aspect = renderer.getVisibleAspect();
     return frameOutline(mode, sel, aspect, mode === "rect" ? shapeOptions.radius : 0);
   }
 
@@ -576,9 +575,8 @@ export function createCropTool(options: CropToolOptions): CropToolHandle {
 
     const ratio = ASPECT_RATIOS[aspectRatio];
     if (ratio !== null && ratio !== undefined) {
-      const imgRect = renderer.getImageRect();
       // Normalized width per unit of normalized height.
-      const k = ratio / (imgRect.width / imgRect.height);
+      const k = ratio / renderer.getVisibleAspect();
       const corner = (west || east) && (north || south);
       const byHeight = corner
         ? axis === "y" ||
@@ -623,9 +621,9 @@ export function createCropTool(options: CropToolOptions): CropToolHandle {
     syncHandles();
     const ratio = ASPECT_RATIOS[preset];
     if (ratio === null || ratio === undefined) return;
-    const imgRect = renderer.getImageRect();
-    const pixelRatio = imgRect.width / imgRect.height;
-    const normalizedRatio = ratio / pixelRatio;
+    // The photo's own shape, not the rect on screen: that one is rounded to whole screen pixels,
+    // and a Square drawn from it could save a pixel off square.
+    const normalizedRatio = ratio / renderer.getVisibleAspect();
     let newW = 1;
     let newH = newW / normalizedRatio;
     if (newH > 1) {
