@@ -1,0 +1,360 @@
+/* The window around the editor: a bar the window drags by, the editor below it, and Settings.
+   Colours follow the editor's dark theme. */
+
+:root {
+  color-scheme: dark;
+  --app-surface: #0b0b0c;
+  --app-raised: #161618;
+  --app-field: rgba(255, 255, 255, 0.05);
+  --app-text-1: rgba(255, 255, 255, 0.93);
+  --app-text-2: rgba(255, 255, 255, 0.62);
+  --app-line: rgba(255, 255, 255, 0.09);
+  --app-line-strong: rgba(255, 255, 255, 0.18);
+  --app-accent: #f5753f;
+  --app-danger: #ff8a7a;
+  --app-ok: #5fd08a;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  background: var(--app-surface);
+  color: var(--app-text-1);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── The bar: room for the traffic lights, the name, what just happened, the model ── */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 84px;
+  border-bottom: 1px solid var(--app-line);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.bar__title {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.bar__title em {
+  font-style: normal;
+  color: var(--app-accent);
+}
+
+.bar__status {
+  flex: 1;
+  color: var(--app-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar__model {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--app-text-2);
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.bar__model:hover {
+  border-color: var(--app-line-strong);
+  color: var(--app-text-1);
+}
+
+.bar__model:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.bar__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--app-line-strong);
+}
+
+.bar__model.is-connected .bar__dot {
+  background: var(--app-ok);
+}
+
+#editor {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* The editor opens below the bar rather than over the whole window, so the traffic lights don't
+   sit on its Cancel button, the window still drags by the bar, and the model stays in view. */
+body .rt-editor-overlay {
+  top: 44px;
+  height: auto;
+}
+
+/* With nothing open yet, the drop zone fills the window rather than its top. */
+#editor > .rt-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+#editor .rt-dropzone-wrapper {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+#editor .rt-dropzone {
+  flex: 1;
+  justify-content: center;
+}
+
+/* ── Settings ── */
+
+.settings {
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--app-line);
+  border-radius: 14px;
+  background: var(--app-raised);
+  color: var(--app-text-1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.settings::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.settings__form {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.settings__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.settings__lead {
+  margin: -8px 0 0;
+  color: var(--app-text-2);
+  line-height: 1.45;
+}
+
+.settings__hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.settings__choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 10px;
+  background: var(--app-field);
+}
+
+.choice:hover {
+  border-color: var(--app-line-strong);
+}
+
+.choice:has(input:checked) {
+  border-color: var(--app-accent);
+  background: rgba(245, 117, 63, 0.08);
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice__name {
+  font-weight: 600;
+}
+
+.choice__where {
+  color: var(--app-text-2);
+  font-size: 12px;
+}
+
+.settings__fields {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+/* Above .field, .check and .button, which set a display of their own. */
+.settings [hidden] {
+  display: none;
+}
+
+.field__label {
+  color: var(--app-text-2);
+  font-size: 12px;
+}
+
+.field__row {
+  display: flex;
+  gap: 8px;
+}
+
+.field__input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+  background: var(--app-field);
+  color: var(--app-text-1);
+  font: inherit;
+}
+
+.field__input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.field__input:focus {
+  outline: 2px solid var(--app-accent);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.field__hint {
+  margin: 0;
+  min-height: 1em;
+  color: var(--app-text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--app-text-2);
+  line-height: 1.4;
+}
+
+.check input {
+  margin: 2px 0 0;
+  accent-color: var(--app-accent);
+}
+
+.settings__privacy {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--app-field);
+  color: var(--app-text-2);
+  line-height: 1.4;
+}
+
+.settings__error {
+  margin: 0;
+  color: var(--app-danger);
+}
+
+.settings__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.button {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--app-line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-text-1);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--app-field);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.5;
+}
+
+.button--primary {
+  border-color: var(--app-accent);
+  background: var(--app-accent);
+  color: #160b05;
+  font-weight: 600;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: #ff8752;
+}
+
+.button--quiet {
+  border-color: transparent;
+  color: var(--app-text-2);
+}

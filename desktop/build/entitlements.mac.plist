@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- V8 compiles JavaScript and WebAssembly at run time, which the hardened runtime blocks
+         unless the app asks for it. Nothing else is asked for: no camera, no microphone, no
+         network server, no files beyond what the person opens or saves. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+  </dict>
+</plist>

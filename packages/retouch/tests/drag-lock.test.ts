@@ -32,6 +32,7 @@ function drag(target: Element, x: number, y: number, path: [number, number][]): 
 const renderer = {
   getImageRect: () => ({ x: 0, y: 0, width: 400, height: 300 }),
   getScreenScale: () => 1,
+  getVisibleAspect: () => 400 / 300,
 } as unknown as CanvasRenderer;
 
 afterEach(() => {

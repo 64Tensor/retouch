@@ -14,6 +14,7 @@ function pointer(type: string, x: number, y: number): Event {
 const renderer = {
   getImageRect: () => ({ x: 0, y: 0, width: 400, height: 300 }),
   getScreenScale: () => 1,
+  getVisibleAspect: () => 400 / 300,
 } as unknown as CanvasRenderer;
 
 function setup() {

@@ -372,6 +372,15 @@ export class CanvasRenderer {
   }
 
   /**
+   * The shown photo's width over its height, from its pixels. The image rect is rounded to whole
+   * screen pixels, so its own ratio is a little off.
+   */
+  getVisibleAspect(): number {
+    const { width, height } = this.visibleSize();
+    return height > 0 ? width / height : 1;
+  }
+
+  /**
    * Zoom relative to fitting the stage (1 = fit). The next render() applies
    * it; false when that render would draw the canvas at the size it has.
    */

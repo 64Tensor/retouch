@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- A placeholder until the brand is settled (PLAN.md decision 8): a photo in crop marks. -->
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26262a"/>
+      <stop offset="1" stop-color="#0b0b0c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff9d63"/>
+      <stop offset="1" stop-color="#f5753f"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ground)"/>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="2"/>
+  <path d="M290 430 V290 H430" fill="none" stroke="url(#accent)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M734 594 V734 H594" fill="none" stroke="url(#accent)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="586" cy="432" r="58" fill="#ededed"/>
+  <path d="M372 652 L478 528 L566 622 L622 570 L652 604 V652 Z" fill="#ededed" stroke="#ededed" stroke-width="24" stroke-linejoin="round"/>
+</svg>

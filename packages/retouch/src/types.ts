@@ -101,6 +101,12 @@ export interface AiOptions {
   /** Custom transport replacing the built-in call. Must resolve to the raw edit-operations object. */
   complete?: (request: AiRequest) => Promise<unknown>;
   /**
+   * The `fetch` the built-in calls use, in place of the global one. An app
+   * can route the requests through its own code this way, for example a
+   * desktop app's main process, which needs no CORS from the server.
+   */
+  fetch?: typeof globalThis.fetch;
+  /**
    * Show Ask AI even without a model: its panel says this, with links, instead
    * of taking commands, and sends nothing anywhere. For apps that ship without
    * a model and tell people how to connect one. Ignored once a model is

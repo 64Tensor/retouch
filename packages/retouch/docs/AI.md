@@ -76,6 +76,23 @@ ai: {
 }
 ```
 
+An app with a way out of its own, such as a desktop app's main process, can keep the built-in
+call and change only how it's sent, with `fetch`. It gets the same arguments as the browser's
+`fetch` and must resolve to a `Response`:
+
+```ts
+ai: {
+  provider: "openai",
+  baseUrl: "http://localhost:11434/v1",
+  model: "mistral-small3.1",
+  fetch: (url, init) => myApp.send(url, init), // sent by the app, so the server needs no CORS
+}
+```
+
+Rétouch's Mac app works this way: the window hands each request to the main process, which adds
+the key from the Keychain and sends it, so the page never holds the key and Ollama or LM Studio
+need no CORS setting.
+
 ## A provider, from the browser
 
 For prototypes, the browser can call a provider directly. The key is then visible to anyone who
@@ -126,6 +143,7 @@ isn't used with `allowUserKey`, whose popover is the way to connect one.
 | `sendImage` | `false` to send no frame, for text-only models. Default `true` |
 | `allowUserKey` | let users paste their own key, kept in their browser |
 | `complete` | your own transport, replacing the built-in call |
+| `fetch` | the `fetch` the built-in call uses, in place of the browser's: send it through your own code |
 | `notice` | what Ask AI says while no model is connected |
 
 Ask AI shows on the editor once a model is connected (`apiKey`, `complete`, or `"openai"` with a
